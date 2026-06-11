@@ -21,7 +21,7 @@ simple argument-per-line overflow; trailing `;` per S6 untouched.
 - `jet fmt file.jet` rewrites in place; `--check` exits 1 on diff
   (CI mode), printing a unified diff.
 - Implementation: pretty-print from the AST **with comments preserved**.
-  The jeter must start retaining comment tokens with spans; attach each
+  The lexer must start retaining comment tokens with spans; attach each
   comment to the nearest following node (or trailing on same line).
   This is the hardest part of the phase — write idempotence tests first.
 - fmt also canonicalizes S14 foreign spellings when the parser's

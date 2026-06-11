@@ -13,7 +13,7 @@ use crate::ast::{
     StructDef, SwitchArm, Type, UnOp, Variant, VariantField, VariantPayload,
 };
 use crate::diag::{Diagnostic, Span};
-use crate::jeter::{describe, StrTokPart, TokKind, Token};
+use crate::lexer::{describe, StrTokPart, TokKind, Token};
 use crate::syntax;
 
 pub fn parse(toks: &[Token]) -> Result<Program, Vec<Diagnostic>> {

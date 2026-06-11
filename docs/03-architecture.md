@@ -6,7 +6,7 @@
  Jet source (.jet)
         │
         ▼
-   jeter.rs ──► tokens (every token has a byte Span)
+   lexer.rs ──► tokens (every token has a byte Span)
         │
         ▼
   parser.rs ──► AST                     ┐
@@ -28,7 +28,7 @@
 |----------------|--------------------------------------|-----------------------|
 | src/syntax.rs  | every user-typeable keyword/sigil    | no                    |
 | src/diag.rs    | Span, Diagnostic, rendering          | renders them          |
-| src/jeter.rs   | text → tokens                        | yes (E00xx)           |
+| src/lexer.rs   | text → tokens                        | yes (E00xx)           |
 | src/parser.rs  | tokens → AST, fail-fast              | yes (E00xx)           |
 | src/sema.rs    | all semantic checks, collects all    | yes (E01xx, M2: E02xx)|
 | src/codegen.rs | AST → Rust text                      | **never**             |

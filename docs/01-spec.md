@@ -22,8 +22,8 @@ the spec and a passing example disagree, the spec is wrong — fix the spec.
 - `true` and `false` are `Bool` literals.
 - Statements end with `;` (S6 — required, including before `}`). Blocks
   (`}` of `if`/`while`/`for`/`fn`) don't take one; `switch` arms do.
-- The jeter recovers from bad characters and keeps going; one run reports
-  every jetical error it can.
+- The lexer recovers from bad characters and keeps going; one run reports
+  every lexical error it can.
 
 ### Grammar (EBNF)
 

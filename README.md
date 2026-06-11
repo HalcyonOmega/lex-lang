@@ -48,7 +48,7 @@ Errors tell you **what**, **why**, and **how to fix it** — try
 | Path      | What                                                    |
 |-----------|---------------------------------------------------------|
 | docs/     | 00 philosophy · 01 spec · 02 **syntax decisions (owner)** · 03 architecture · 04 diagnostics · 05 roadmap |
-| src/      | the compiler: jeter → parser → sema → codegen + CLI     |
+| src/      | the compiler: lexer → parser → sema → codegen + CLI     |
 | examples/ | executable spec, with expected outputs                  |
 | examples/preview/ | syntax previews (not compiled by golden tests)    |
 | tests/ui/ | every error message, snapshot-pinned                    |

@@ -70,7 +70,7 @@ pattern += "ok" "(" ident ")" | "err" "(" ident ")" ;
 ```
 
 `or` the type operator and `or` the fallback operator are distinguished
-by position (type vs expression context); the jeter keeps one token.
+by position (type vs expression context); the lexer keeps one token.
 Precedence: `e or f` binds looser than `&&`/`||` so `a? or b` and
 `x == 1 || y or 0` parse predictably; document in docs/01.
 

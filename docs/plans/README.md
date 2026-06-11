@@ -20,7 +20,7 @@ win on conflict.
 3. Work test-first: for each feature, write the failing ui fixture or
    example before the code. Snapshot text must follow docs/04 voice
    rules exactly.
-4. Build in pipeline order: syntax.rs → jeter → parser → sema → codegen,
+4. Build in pipeline order: syntax.rs → lexer → parser → sema → codegen,
    never skipping sema into codegen (rules R1/R2).
 5. Error codes: claim them in docs/04's registry as you go. Each
    milestone has a reserved block (M3=E03xx, M4=E04xx, M5=E05xx,

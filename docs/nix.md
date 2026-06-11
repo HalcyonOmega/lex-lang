@@ -12,16 +12,16 @@ Add to your flake inputs (adjust the URL to your fork):
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    jet-lang.url = "github:YOUR_USER/jet-lang";
+    lex-lang.url = "github:YOUR_USER/lex-lang";
   };
 
-  outputs = { nixpkgs, jet-lang, ... }: {
+  outputs = { nixpkgs, lex-lang, ... }: {
     nixosConfigurations.hostname = nixpkgs.lib.nixosSystem {
       system = "x86_64-linux";
       modules = [
         ({ pkgs, ... }: {
           environment.systemPackages = [
-            jet-lang.packages.${pkgs.system}.default
+            lex-lang.packages.${pkgs.system}.default
           ];
         })
       ];
@@ -37,7 +37,7 @@ Then `sudo nixos-rebuild switch` (or `home-manager` equivalent with
 
 ```nix
 environment.systemPackages = [
-  (import /path/to/jet-lang { }).packages.${pkgs.system}.default
+  (import /path/to/lex-lang { }).packages.${pkgs.system}.default
 ];
 ```
 

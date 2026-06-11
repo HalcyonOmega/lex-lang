@@ -31,7 +31,7 @@ Error [E0102]: nothing named `pirnt` exists here
 
 Diagnostics without a span (e.g. E0101) omit the location/source block.
 Multiple diagnostics are separated by one blank line. Every stage reports
-all the problems it can in one run (M1 error recovery): the jeter skips
+all the problems it can in one run (M1 error recovery): the lexer skips
 past bad characters, the parser re-syncs at statement boundaries, and
 sema checks every function. Caret columns are display-width aware, so
 underlines line up under wide characters and emoji.

@@ -12,6 +12,7 @@ milestone starts (plans in docs/plans/ are blocked on these IDs).
 ## Group 3 — Errors (decide before M4)
 
 **S34 — Spelling a fallible return type.**
+
 - A. `fn parse(s: String) -> Int or ParseError` — `or` in the type
 - B. `Result[Int, ParseError]` (Rust spelling, S33 brackets)
 - C. Zig-style `!Int` with inferred error sets
@@ -22,9 +23,10 @@ Beginners: A by a mile. → **A.** The error side is any enum, struct, or
 `String` (low-friction prototyping: `-> Int or String` is legal).
 
 **S35 — Handling errors without ceremony.**
+
 - A. `or` fallback expression: `parse(x) or 0`, `parse(x) or return`,
-  `parse(x) or panic("…")` — plus **`== ok(v)` / `== err(e)`** patterns
-  (S31-style) and `?` for propagation
+`parse(x) or panic("…")` — plus `**== ok(v)` / `== err(e)`** patterns
+(S31-style) and `?` for propagation
 - B. methods only: `.unwrap_or(0)`, `.expect("…")` (Rust)
 - C. patterns + `?` only, no fallback sugar
 
@@ -34,6 +36,7 @@ Beginners: A — `val n = parse(x) or 0;` needs no explanation.
 both absence and failure.
 
 **S36 — Stopping the program on a bug.**
+
 - A. `panic("msg")` + `assert(cond)` / `assert(cond, "msg")` builtins
 - B. `panic` only
 - C. `abort`/`fatal` naming instead
@@ -48,9 +51,10 @@ does the teaching. → **A.** `assert_eq(a, b)` joins in M6 for tests.
 
 **S37 — List literal.** `[1, 2, 3]` vs `List(1, 2, 3)` vs `{1, 2, 3}`.
 Rust: `vec![…]`. Everyone everywhere: square brackets.
-→ **`[1, 2, 3]`**, empty `[]` with an annotation when ambiguous.
+→ `**[1, 2, 3]`**, empty `[]` with an annotation when ambiguous.
 
 **S38 — Map literal.**
+
 - A. `["name": 1, "other": 2]`, empty `[:]` (Swift)
 - B. `{"name": 1}` braces (Python/JS/JSON)
 - C. no literal; `Map.new()` + inserts
@@ -62,8 +66,9 @@ braces = code/structs" rule keeps the grammar LL and error messages
 crisp.
 
 **S39 — Out-of-bounds behavior.**
+
 - A. `xs[i]` stops the program with a friendly report; `xs.get(i) -> T?`
-  for safe access (Rust's split)
+for safe access (Rust's split)
 - B. `xs[i]` returns `T?` always (total safety, unwrap ceremony)
 - C. B for maps, A for lists
 
@@ -80,8 +85,9 @@ honest docs. Beginners: inclusive matches what `1..3` already means in
 `for`. → **Inclusive, copying `xs[a..b]`**; same for `s.slice(a..b)`.
 
 **S41 — Strings & `Char`.**
+
 - A. `s.len()` counts characters; `for c in s.chars()`; single-quoted
-  `'a'` Char literals; NO `s[i]` indexing (error teaches `.chars()`)
+`'a'` Char literals; NO `s[i]` indexing (error teaches `.chars()`)
 - B. Rust model: byte length, `.chars()` iterator, no indexing
 - C. UTF-32 strings, O(1) indexing (memory cost)
 
@@ -91,9 +97,10 @@ everyone outside systems code. Beginners: A — "héllo".len() == 5.
 `.bytes()` for experts).
 
 **S42 — Numbers beyond `Int`/`Float`.**
+
 - A. Stay `Int`(i64)/`Float`(f64) for v1; add `Byte`(u8) in M10 for
-  binary data; conversions are named methods/constructors:
-  `n.to_float()`, `f.to_int()`, `Int.parse(s)`; no `as` keyword
+binary data; conversions are named methods/constructors:
+`n.to_float()`, `f.to_int()`, `Int.parse(s)`; no `as` keyword
 - B. full sized-integer menu now (i8…u64) Rust-style
 - C. arbitrary-precision Int (Python) — rejected: priority #3
 
@@ -106,6 +113,7 @@ evidence (FFI in M7 may force it — revisit then). Beginners: A.
 ## Group 5 — Tooling & FFI (decide before M6/M7)
 
 **S43 — Test syntax.**
+
 - A. first-class blocks: `test "name" { … }` with `assert`/`assert_eq`
 - B. Rust attribute style `#[test] fn …`
 - C. naming convention `fn test_*`
@@ -122,9 +130,10 @@ the M6 plan; the only real choice is width — **100**.
 
 **S49 — Doc comments.** `/// summary line` above items (Rust), shown by
 hover/docs tooling; plain text v1. Alternatives: `##`, docstrings.
-→ **`///`** — it degrades gracefully to a normal comment.
+→ `**///`** — it degrades gracefully to a normal comment.
 
 **S50 — Calling Rust (FFI).**
+
 - A. `extern rust "crate@version" { fn name(args) -> T = "rust::path"; }`
 - B. annotation per function `@rust("rand::random")`
 - C. manifest-only mapping, no inline syntax
@@ -139,6 +148,7 @@ a manifest exists, per M12).
 ## Group 6 — Functions & generics (decide before M8/M9)
 
 **S46 — Lambda syntax.**
+
 - A. `(x) => x * 2` and `(x) => { … }` (JS/C#/TS arrow)
 - B. `|x| x * 2` (Rust pipes)
 - C. `fn(x) x * 2` anonymous-fn keyword (Zig-ish)
@@ -149,9 +159,10 @@ recognized lambda form on earth. → **A.** (`=>` is new; `->` stays for
 return types/switch arms — distinct on purpose.)
 
 **S47 — Function types & closure captures.**
+
 - A. type is `fn(Int) -> Int`; captures follow M2 rules automatically;
-  *escaping* closures clone clonables (lint) and require an explicit
-  `take(name)` prefix for non-clonables: `take(sender) () => …`
+*escaping* closures clone clonables (lint) and require an explicit
+`take(name)` prefix for non-clonables: `take(sender) () => …`
 - B. Rust's three traits (Fn/FnMut/FnOnce) surfaced to users
 - C. capture lists always required (C++)
 
@@ -193,8 +204,7 @@ post-1.0 only if trait bounds prove insufficient.
 **S51 — Std library access.** `import "std/fs" as fs;` reusing S16
 machinery (reserved `std/` prefix) vs auto-available globals vs a `std.`
 mega-namespace. Rust: `use std::fs`. Experts: explicit imports, grep
-friendly. Beginners: one import line, copy-pasteable. → **`import
-"std/fs" as fs;`** — `print`/`assert`/`panic` stay prelude builtins;
+friendly. Beginners: one import line, copy-pasteable. → `**import "std/fs" as fs;`** — `print`/`assert`/`panic` stay prelude builtins;
 everything else is imported.
 
 **S54 — Naming convention.** Enforce snake_case for fn/vars and
@@ -202,10 +212,11 @@ PascalCase for types? Rust: yes (warnings). → **Lint (L1001), warning
 only, fmt never renames.** One ecosystem-wide style with no fights.
 
 **S53 — Concurrency surface.**
+
 - A. `tasks.spawn(closure) -> Task[T]`, `t.join() -> T`,
-  `tasks.channel[T]()` with `Sender`/`receive() -> T or Closed`;
-  no shared mutable state in v1 (ownership rejects it; channels are
-  the answer)
+`tasks.channel[T]()` with `Sender`/`receive() -> T or Closed`;
+no shared mutable state in v1 (ownership rejects it; channels are
+the answer)
 - B. `go`-style keyword `spawn { … }` fire-and-forget + channels
 - C. defer all concurrency past v1
 
@@ -216,10 +227,11 @@ with the M11 error messages ("the new task might outlive `data`…").
 → **A**, as std functions not keywords (smallness: no new syntax at all).
 
 **S52 — Package manifest.**
+
 - A. `jet.toml` (tiny TOML subset, hand-parsed): `[package]`,
-  `[dependencies]` (git/path, exact pins), `[rust-dependencies]`;
-  lockfile `jet.lock`; commands `jet add` / `jet fetch`; registry later
-  as a static git index
+`[dependencies]` (git/path, exact pins), `[rust-dependencies]`;
+lockfile `jet.lock`; commands `jet add` / `jet fetch`; registry later
+as a static git index
 - B. JSON manifest
 - C. manifest written in Jet itself (Zig's build.zig direction)
 
@@ -231,12 +243,14 @@ three lines. → **A.** Single files stay manifest-free forever (R9).
 
 ## Tally sheet (open only)
 
-| Group | IDs | Needed by | Status |
-|-------|-----|-----------|--------|
-| 3 Errors | S34 S35 S36 | M4 | ☐ |
-| 4 Collections & strings | S37 S38 S39 S40 S41 S42 | M5 | ☐ |
-| 5 Tooling & FFI | S43 S44 S49 S50 | M6/M7 | ☐ |
-| 6 Functions & generics | S46 S47 S45 S28 S48 S26 | M8/M9 | ☐ |
-| 7 Platform | S51 S54 S53 S52 | M10–M12 | ☐ |
+
+| Group                   | IDs                     | Needed by | Status |
+| ----------------------- | ----------------------- | --------- | ------ |
+| 3 Errors                | S34 S35 S36             | M4        | ☐      |
+| 4 Collections & strings | S37 S38 S39 S40 S41 S42 | M5        | ☐      |
+| 5 Tooling & FFI         | S43 S44 S49 S50         | M6/M7     | ☐      |
+| 6 Functions & generics  | S46 S47 S45 S28 S48 S26 | M8/M9     | ☐      |
+| 7 Platform              | S51 S54 S53 S52         | M10–M12   | ☐      |
+
 
 Ratified (see docs/02): Group 1 confirmations; Group 2 — S29–S33.

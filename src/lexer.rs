@@ -1,14 +1,14 @@
-//! Jeter: source text -> tokens. Every token carries a byte span so that
+//! Lexer: source text -> tokens. Every token carries a byte span so that
 //! diagnostics anywhere downstream can point at real source.
 //!
-//! M1: the jeter recovers from errors — it reports every problem it finds
+//! M1: the lexer recovers from errors — it reports every problem it finds
 //! in one run instead of stopping at the first.
 
 use crate::diag::{Diagnostic, Span};
 use crate::syntax;
 
 /// One piece of a string literal: literal text (escapes already decoded)
-/// or an interpolated expression, pre-jeted into its own token stream
+/// or an interpolated expression, pre-lexed into its own token stream
 /// with spans into the original source (S8).
 #[derive(Debug, Clone, PartialEq)]
 pub enum StrTokPart {
@@ -247,7 +247,7 @@ fn keyword(name: &str) -> Option<TokKind> {
     }
 }
 
-struct Jeter<'a> {
+struct Lexer<'a> {
     chars: Vec<(usize, char)>,
     end: usize,
     src: &'a str,
@@ -255,10 +255,10 @@ struct Jeter<'a> {
     diags: Vec<Diagnostic>,
 }
 
-/// Jet the whole file. Always returns a token stream (ending in Eof) plus
+/// Lex the whole file. Always returns a token stream (ending in Eof) plus
 /// every problem found along the way — M1 error recovery.
-pub fn jet(src: &str) -> (Vec<Token>, Vec<Diagnostic>) {
-    let mut lx = Jeter {
+pub fn lex(src: &str) -> (Vec<Token>, Vec<Diagnostic>) {
+    let mut lx = Lexer {
         chars: src.char_indices().collect(),
         end: src.len(),
         src,
@@ -273,7 +273,7 @@ pub fn jet(src: &str) -> (Vec<Token>, Vec<Diagnostic>) {
     (toks, lx.diags)
 }
 
-impl<'a> Jeter<'a> {
+impl<'a> Lexer<'a> {
     fn at(&self, i: usize) -> char {
         if i < self.chars.len() {
             self.chars[i].1
@@ -394,14 +394,14 @@ impl<'a> Jeter<'a> {
                         "remove it, or use supported syntax".to_string(),
                         Some(Span::new(start, self.pos(self.i + 1))),
                     ));
-                    self.i += 1; // skip it and keep jeting (error recovery)
+                    self.i += 1; // skip it and keep lexing (error recovery)
                 }
             }
         }
         toks
     }
 
-    /// Jet digits, with an optional decimal part (S11 Float).
+    /// Lex digits, with an optional decimal part (S11 Float).
     /// `1..10` stays Int DotDot Int: a `.` only starts the decimal part
     /// when a digit follows it.
     fn number(&mut self, start: usize) -> Token {
@@ -451,8 +451,8 @@ impl<'a> Jeter<'a> {
         }
     }
 
-    /// Jet a string literal: escapes (S20), `{{`/`}}` literal braces (S20),
-    /// and `{expr}` interpolation (S8). Interpolated expressions are jeted
+    /// Lex a string literal: escapes (S20), `{{`/`}}` literal braces (S20),
+    /// and `{expr}` interpolation (S8). Interpolated expressions are lexed
     /// in place so their tokens carry real source spans.
     fn string(&mut self, start: usize) -> Option<Token> {
         self.i += 1; // opening quote
@@ -567,8 +567,8 @@ impl<'a> Jeter<'a> {
                     if !lit.is_empty() {
                         parts.push(StrTokPart::Lit(std::mem::take(&mut lit)));
                     }
-                    // Jet the inner expression; shift spans to absolute.
-                    let (mut inner_toks, inner_diags) = jet(inner);
+                    // Lex the inner expression; shift spans to absolute.
+                    let (mut inner_toks, inner_diags) = lex(inner);
                     for t in &mut inner_toks {
                         t.span =
                             Span::new(t.span.start + inner_start_byte, t.span.end + inner_start_byte);
