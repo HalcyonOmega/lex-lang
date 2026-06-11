@@ -1,0 +1,15 @@
+[package]
+name = "lex"
+version = "0.1.0"
+edition = "2021"
+
+# Invariant I6 (see CLAUDE.md): zero external dependencies in the compiler
+# until the owner approves one. std only.
+
+[lib]
+name = "lex"
+path = "src/lib.rs"
+
+[[bin]]
+name = "lex"
+path = "src/main.rs"

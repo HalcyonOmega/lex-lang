@@ -1,0 +1,7 @@
+error[E0003]: expected `:` after a parameter name, found `)`
+  --> tests/ui/params_not_yet.lex:1:14
+    |
+  1 | fn greet(name) {
+    |              ^
+ why: the structure here isn't what the compiler expected
+ fix: use ``:`` after a parameter name

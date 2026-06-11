@@ -1,0 +1,139 @@
+//! OWNER-CONTROLLED SURFACE.
+//!
+//! Every keyword, sigil, and built-in name a user can type lives in this
+//! file and nowhere else (invariant I7). Each constant maps to a decision
+//! ID in docs/02-syntax-decisions.md. Changing a provisional choice means:
+//! change it here, update docs/02, re-bless the ui snapshots. Done.
+//!
+//! Agents: do NOT add an entry here without a decision ID approved by the
+//! owner in docs/02-syntax-decisions.md.
+
+/// N1 (ratified): language name.
+pub const LANG_NAME: &str = "Lex";
+
+/// N1 (ratified): compiler binary name.
+pub const BINARY_NAME: &str = "lex";
+
+/// N2 (ratified): source file extension (without the dot).
+pub const FILE_EXT: &str = "lex";
+
+/// S1 (ratified): keyword that starts a function definition.
+pub const KW_FN: &str = "fn";
+
+/// S18 (ratified): marks an item as visible to other files (via import).
+pub const KW_PUB: &str = "pub";
+
+/// S2 (ratified): introduces an immutable binding.
+pub const KW_VAL: &str = "val";
+
+/// S2 (ratified): introduces a mutable binding.
+pub const KW_VAR: &str = "var";
+
+/// S3 (ratified): block delimiters.
+pub const BLOCK_OPEN: &str = "{";
+pub const BLOCK_CLOSE: &str = "}";
+
+/// S7 (provisional): propagates a `Result` error from the callee.
+pub const OP_TRY_SUFFIX: &str = "?";
+
+/// S5 (provisional): line comments run from this prefix to end of line.
+pub const COMMENT_PREFIX: &str = "//";
+
+/// S6 (provisional): separates statements inside a block.
+pub const STMT_SEP: &str = ";";
+
+/// S8 (ratified): string interpolation delimiters inside quoted text.
+pub const INTERP_OPEN: &str = "{";
+pub const INTERP_CLOSE: &str = "}";
+
+/// S9 (ratified): the built-in print function (adds a newline).
+pub const BUILTIN_PRINT: &str = "print";
+
+/// S11 (ratified): built-in type names (M1).
+pub const TYPE_INT: &str = "Int";
+pub const TYPE_FLOAT: &str = "Float";
+pub const TYPE_BOOL: &str = "Bool";
+pub const TYPE_STRING: &str = "String";
+
+/// S10 (ratified M2): caller-site mutable borrow on a parameter or binding.
+pub const KW_MUTATE: &str = "mut";
+
+/// S10 (ratified M2): caller-site move; ownership transfers permanently.
+pub const KW_MOVE: &str = "take";
+
+/// S10 (ratified M2): return type — a borrow tied to self (elided lifetime).
+pub const KW_VIEW: &str = "view";
+
+/// S10 (ratified M2, tier 2): field annotation — a stored reference.
+pub const KW_STORED: &str = "ref";
+
+/// M2: struct definition keyword.
+pub const KW_STRUCT: &str = "struct";
+
+/// M2: compile-time constant (emits Rust `const` or `static`).
+pub const KW_CONST: &str = "const";
+
+/// M1/M2: return from a function.
+pub const KW_RETURN: &str = "return";
+
+/// M2: loop statement (for SharedHandle lint checks).
+pub const KW_LOOP: &str = "loop";
+
+/// M2 tier 2: unsafe block for expert code.
+pub const KW_UNSAFE: &str = "unsafe";
+
+/// M5 preview: list type constructor.
+pub const TYPE_LIST: &str = "List";
+
+/// M2: shared handle type (Arc equivalent); auto-cloned across boundaries.
+pub const TYPE_SHARED: &str = "Shared";
+
+/// S13 (provisional): logical operators.
+pub const OP_AND: &str = "&&";
+pub const OP_OR: &str = "||";
+pub const OP_NOT: &str = "!";
+
+/// S13 (provisional): comparison operators.
+pub const OP_EQ: &str = "==";
+pub const OP_NE: &str = "!=";
+pub const OP_LT: &str = "<";
+pub const OP_GT: &str = ">";
+pub const OP_LE: &str = "<=";
+pub const OP_GE: &str = ">=";
+
+/// S17 (provisional): compound assignment operators (M1).
+pub const OP_PLUS_EQ: &str = "+=";
+pub const OP_MINUS_EQ: &str = "-=";
+pub const OP_STAR_EQ: &str = "*=";
+pub const OP_SLASH_EQ: &str = "/=";
+pub const OP_PERCENT_EQ: &str = "%=";
+pub const OP_AMP_EQ: &str = "&=";
+pub const OP_PIPE_EQ: &str = "|=";
+pub const OP_CARET_EQ: &str = "^=";
+pub const OP_SHL_EQ: &str = "<<=";
+pub const OP_SHR_EQ: &str = ">>=";
+
+/// S13 (provisional): word forms recognized only for S14 teaching errors.
+pub const FOREIGN_AND: &str = "and";
+pub const FOREIGN_OR: &str = "or";
+pub const FOREIGN_NOT: &str = "not";
+
+/// S16 (provisional): brings another file into scope under a local name.
+pub const KW_IMPORT: &str = "import";
+pub const KW_AS: &str = "as";
+
+/// S14: foreign forms recognized only for teaching errors.
+pub const FOREIGN_TRY: &str = "try";
+pub const FOREIGN_LET: &str = "let";
+pub const FOREIGN_LET_MUT: &str = "let mut";
+pub const FOREIGN_SET: &str = "set";
+pub const FOREIGN_FUNC: &str = "func";
+pub const FOREIGN_DEF: &str = "def";
+pub const FOREIGN_USE: &str = "use";
+pub const FOREIGN_PRINTLN: &str = "println";
+pub const FOREIGN_TEXT: &str = "Text";
+
+/// S10 (ratified M2): foreign read/write forms for teaching errors.
+pub const FOREIGN_READ: &str = "read";
+pub const FOREIGN_WRITE: &str = "write";
+pub const FOREIGN_OWNED: &str = "owned";

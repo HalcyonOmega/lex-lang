@@ -1,0 +1,7 @@
+error[E0208]: `*` isn't allowed here
+  --> tests/ui/deref_forbidden.lex:3:11
+    |
+  3 |     print(*x);
+    |           ^
+ why: dereferencing with `*` is only for expert code inside `unsafe`
+ fix: remove `*`, or wrap this code in `unsafe { ... }`
