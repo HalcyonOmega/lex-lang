@@ -33,13 +33,13 @@ pub const KW_VAR: &str = "var";
 pub const BLOCK_OPEN: &str = "{";
 pub const BLOCK_CLOSE: &str = "}";
 
-/// S7 (provisional): propagates a `Result` error from the callee.
+/// S7 (ratified M4): propagates a fallible result from the callee.
 pub const OP_TRY_SUFFIX: &str = "?";
 
-/// S5 (provisional): line comments run from this prefix to end of line.
+/// S5 (ratified): line comments run from this prefix to end of line.
 pub const COMMENT_PREFIX: &str = "//";
 
-/// S6 (provisional): separates statements inside a block.
+/// S6 (ratified): separates statements inside a block.
 pub const STMT_SEP: &str = ";";
 
 /// S8 (ratified): string interpolation delimiters inside quoted text.
@@ -137,12 +137,12 @@ pub const OP_SHR: &str = ">>";
 /// literal braces.
 pub const ESCAPES: &[(char, char)] = &[('n', '\n'), ('t', '\t'), ('"', '"'), ('\\', '\\')];
 
-/// S13 (provisional): logical operators.
+/// S13 (ratified): logical operators.
 pub const OP_AND: &str = "&&";
 pub const OP_OR: &str = "||";
 pub const OP_NOT: &str = "!";
 
-/// S13 (provisional): comparison operators.
+/// S13 (ratified): comparison operators.
 pub const OP_EQ: &str = "==";
 pub const OP_NE: &str = "!=";
 pub const OP_LT: &str = "<";
@@ -150,7 +150,7 @@ pub const OP_GT: &str = ">";
 pub const OP_LE: &str = "<=";
 pub const OP_GE: &str = ">=";
 
-/// S17 (provisional): compound assignment operators (M1).
+/// S17 (ratified): compound assignment operators (M1).
 pub const OP_PLUS_EQ: &str = "+=";
 pub const OP_MINUS_EQ: &str = "-=";
 pub const OP_STAR_EQ: &str = "*=";
@@ -162,12 +162,12 @@ pub const OP_CARET_EQ: &str = "^=";
 pub const OP_SHL_EQ: &str = "<<=";
 pub const OP_SHR_EQ: &str = ">>=";
 
-/// S13 (provisional): word forms recognized only for S14 teaching errors.
+/// S13 (ratified): word forms recognized only for S14 teaching errors.
 pub const FOREIGN_AND: &str = "and";
 pub const FOREIGN_OR: &str = "or";
 pub const FOREIGN_NOT: &str = "not";
 
-/// S16 (provisional): brings another file into scope under a local name.
+/// S16 (ratified M6): file path or module name import; optional `as`.
 pub const KW_IMPORT: &str = "import";
 pub const KW_AS: &str = "as";
 

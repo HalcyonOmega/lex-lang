@@ -1,8 +1,10 @@
 # 01 — Language Spec (living document)
 
-Everything here is provisional until ratified in docs/02-syntax-decisions.md.
-The examples/ directory is the executable form of this spec: if the spec and
-a passing example disagree, the spec is wrong — fix the spec.
+Behavior described here is authoritative when ratified in
+docs/02-syntax-decisions.md (enforced by `tests/decisions.rs` on every
+`cargo test`). Open decisions in docs/02 are not implemented until
+ratified. The examples/ directory is the executable form of this spec: if
+the spec and a passing example disagree, the spec is wrong — fix the spec.
 
 ## M1 — what exists today (values, expressions, control flow)
 

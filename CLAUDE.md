@@ -17,7 +17,8 @@ user-facing syntax.
 
 This scaffold was authored in a sandbox **without a Rust toolchain**.
 1. `cargo build` — fix any compile errors (keep fixes minimal/mechanical).
-2. `cargo test` — golden tests must pass as-is. If a ui snapshot differs
+2. `cargo test` — golden tests and `tests/decisions.rs` (ratification
+   enforcement) must pass as-is. If a ui snapshot differs
    only because rendering drifted from the hand-computed fixtures, check
    the actual output against the format in docs/04-diagnostics.md, then
    bless with `UPDATE_EXPECT=1 cargo test` and re-run.

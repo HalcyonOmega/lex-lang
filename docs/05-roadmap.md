@@ -4,6 +4,20 @@ Each milestone is done when its exit criteria pass as tests. Examples are
 the executable spec: a milestone ships with new examples/ programs and new
 tests/ui fixtures, all green.
 
+**M3 onward each have a full implementation plan in docs/plans/** (one
+file per milestone: surface, grammar, sema rules, lowering, diagnostics,
+tests, out-of-scope). Implementing agents follow docs/plans/README.md.
+Plans are gated on the decision ballots in docs/06-decision-ballots.md —
+a milestone may not start until its ballot group is ratified in docs/02.
+
+**Owner direction (2026-06-11):** the v1.x horizon is a complete
+language — data types, errors, collections, closures, generics/traits,
+std library, concurrency, package manager, real LSP — good enough that
+experts rewriting small Rust/Go/C tools would *choose* Lex. Formerly
+"deferred indefinitely" items (generics, threads & channels, package
+manager) are hereby promoted onto the roadmap below. Philosophy ranks
+are unchanged; single-file `lex run` stays ceremony-free forever (R9).
+
 ## M0 — Walking skeleton  *(done; verified 2026-06-11)*
 
 Hello world end-to-end: lex → parse → sema → emit Rust → rustc → run.
@@ -41,63 +55,119 @@ each with a `.fixed.lex` companion that compiles (`tests/ui_fixes.rs`);
 lint snapshots in `tests/ui_lint/`; golden tests prove rustc never rejects
 what sema passes (the verifier earning its keep). ✓
 
-## M3 — Data
+## M3 — Data  *(plan: docs/plans/m03-data.md; ballots: Group 2)*
 
 Structs, enums (sum types), `switch` exhaustiveness for enums ("you
-forgot the `Circle` case"), methods (S27: `self`, `c.area()`, definable
-inside the type or in `impl Type { }` blocks). No inheritance, ever
-(non-goal). Traits/interfaces (S28) are explicitly out of M3 but
-planned for a later milestone.
+forgot the `Circle` case"), `is` patterns, Option (`T?`, no null,
+ever), methods (S27: `self`, `c.area()`, definable inside the type or
+in `impl Type { }` blocks), invisible auto-boxing for recursive types.
+No inheritance, ever (non-goal). Traits/interfaces (S28) are explicitly
+out of M3 — they land in M9.
 **Exit:** a shapes/state-machine example; exhaustiveness errors list the
 missing cases verbatim.
 
-## M4 — Errors as values
+## M4 — Errors as values  *(plan: docs/plans/m04-errors.md; ballots: Group 3)*
 
-`Result`-style errors, propagation syntax (S7), `panic` for bugs.
-No exceptions, no null.
-**Exit:** a file-parsing example showing the happy path staying clean.
+`T or E` fallible returns, `ok`/`err`, propagation `?` (S7), `or`
+fallback, `panic`/`assert` for bugs with a friendly runtime report.
+No exceptions, no null, no silently ignored failures.
+**Exit:** a file-parsing example showing the happy path staying clean;
+the runtime report format pinned by a golden stderr test.
 
-## M5 — Collections & one string story
+## M5 — Collections & one string story  *(plan: docs/plans/m05-collections.md; ballots: Group 4)*
 
-`List`, `Map` (bridging Rust's Vec/HashMap internally), iteration,
-slicing without exposing references (indices/handles). Exactly one
-string type.
+`List[T]`, `Map[K, V]` (bridging Rust's Vec/BTreeMap internally),
+literals, iteration, indexing with friendly runtime reports, copy-based
+slicing without exposing references, `Char`, a real String API. Exactly
+one string type.
 **Exit:** wordcount example; out-of-bounds and iterator-invalidation
 mistakes produce great errors, not Rust concepts.
 
-## M6 — Tooling
+## M6 — Tooling I  *(plan: docs/plans/m06-tooling.md; ballots: Group 5; four phases)*
 
-`lex fmt` (one true style, zero config), `lex test`, `lex new`. Multi-file imports (S16: `import "path" as alias;`) and visibility (S18:
-`pub` exports, private by default). An LSP
-server whose first job is autocorrect: rewrite recognized foreign
-spellings (`and` → `&&`, `try` → `?`, `let` → `val`, `set` → `val`,
-`println` → `print`,
-`Text` → `String`,
-etc.) to canonical
-Lex on save, completing the
-S14 story (error-first in M1, autocorrect here). A `lex build --small`
-profile (`opt-level="z"`, full LTO; panic stance per S15). Single binary,
-no config files (philosophy: minimal configuration).
+`lex fmt` (one true style, zero config), `lex test` (`test "name" { }`
+blocks), `lex new`. Multi-file imports (S16: `import "path" as alias;`)
+and cross-file visibility enforcement (S18). A `lex build --small`
+profile (S15). LSP **v0**: diagnostics + S14 autocorrect quick-fixes +
+formatting, with a minimal VS Code extension. Single binary, no config
+files (philosophy: minimal configuration).
 **Exit:** fmt is idempotent on all examples; autocorrect turns a pasted
 C-style snippet into canonical Lex; `--small` produces a measurably
 smaller binary than the default; a new project runs in two commands.
 
-## M7 — Rust FFI (interop tier)
+## M7 — Rust FFI (interop tier)  *(plan: docs/plans/m07-ffi.md; ballots: Group 5)*
 
-`extern` blocks for calling vetted Rust functions across an owned/copied
-boundary (no borrowed returns). This is C2's resolution: interop without
-importing Rust's type system.
+`extern rust` blocks for calling vetted Rust functions across an
+owned/copied boundary (no borrowed returns), version-pinned, built via a
+hidden cached cargo bridge — the user's directory never grows a cargo
+project. This is C2's resolution: interop without importing Rust's type
+system.
 **Exit:** an example calling a real Rust crate function.
 
-## Deferred indefinitely (owner can promote)
+## M8 — Functions as values  *(plan: docs/plans/m08-closures.md; ballots: Group 6)*
 
-Async, user macros, generics (traits are S28 — planned, not indefinite),
-threads & channels, package manager,
-self-hosting, debugger source maps.
+Lambdas, function types, closures whose captures obey the M2 ownership
+rules (no Fn/FnMut/FnOnce surfaced), and the closure-powered collection
+methods: `map`/`filter`/`each`/`find`/`sort_by`/`reduce`.
+**Exit:** a pipeline example; capture-ownership fixtures both failing
+and fixed; rustc-as-verifier battery over Fn-inference cases.
 
-**Comptime (Zig-style compile-time execution)** — deferred to Tier 2,
-post-M5. Revisit once structs, collections, and real programs show
-whether we need generics at all, and if so whether Lex should specialize
-via a `comptime` interpreter in sema (not rustc `const fn`). See
-docs/02-syntax-decisions.md **S26** for the placeholder. Owner can
-promote when motivated; no implementation until then.
+## M9 — Generics & traits  *(plan: docs/plans/m09-generics-traits.md; ballots: Group 6; resolves S26/S28)*
+
+`fn f[T: Trait]`, generic structs/enums, `trait` + `impl Trait for
+Type`, trait-as-type with invisible boxing/dynamic dispatch, built-in
+`Printable`/`Comparable`/`Equatable`. Monomorphized by rustc, proven by
+sema (R2). Comptime (S26) closes as rejected for v1.
+**Exit:** shapes-with-traits example; generic container example; an
+instantiation soundness matrix test.
+
+## M10 — Standard library  *(plan: docs/plans/m10-stdlib.md; ballots: Group 7)*
+
+`import "std/…"`: fs, io, env, process, math, random, time, json —
+exact v1 APIs frozen in the plan; every fallible call returns `T or E`.
+`Byte` and byte/string conversions. Enough batteries for real CLI tools.
+**Exit:** file-transform, JSON, and mini-CLI examples with golden tests.
+
+## M11 — Concurrency  *(plan: docs/plans/m11-concurrency.md; ballots: Group 7)*
+
+Tasks + channels (`tasks.spawn`, `Task[T].join`, `Channel[T]`), no
+shared mutable state — the ownership checker proves data-race freedom
+with no lifetime syntax. Panics in tasks fail loud at `join`.
+**Exit:** parallel-sum and producer/consumer examples with
+deterministic goldens; shared-capture fixtures failing with the human
+framing and fixed with channels.
+
+## M12 — Package manager  *(plan: docs/plans/m12-packages.md; ballots: Group 7; two phases)*
+
+Opt-in `lex.toml` (path + git deps, exact pins), `lex add`/`lex fetch`,
+content-hashed `lex.lock`, FFI deps in the manifest, no install-time
+code execution. Phase 2: static-index registry. Single files never need
+any of it (R9).
+**Exit:** fixture workspaces covering resolution, locking, conflicts,
+and tampering; an end-to-end new→add→run flow.
+
+## M13 — LSP v2  *(plan: docs/plans/m13-lsp.md)*
+
+The real language server: completion (incl. switch-arm snippets for
+enums), hover with types + ownership + doc comments, go-to-definition,
+references, rename, structured quick-fixes (shared with a new CLI
+`--fix`), semantic tokens, inlay hints. Crash-proof, latency-budgeted,
+fed by unsaved buffers. Tree-sitter + TextMate grammars.
+**Exit:** scripted LSP transcript tests per capability; a bench harness
+under budget in CI.
+
+## M14 — v1.0  *(plan: docs/plans/m14-v1.md)*
+
+The proof: three showcase tools (grep-lite, JSON formatter, parallel
+wordfreq) benchmarked at ≤1.5× their Rust references. Diagnostics,
+soundness-fuzz, and performance audits; Open Decisions emptied; language
+tour + generated error-code index; prebuilt binaries; tag `v1.0.0`.
+**Exit:** see the plan — ends with a stranger shipping a tool from the
+README in an afternoon.
+
+## Deferred past v1.0 (owner can promote)
+
+Async/await (tasks + channels are the v1 answer), user macros, Mutex/
+shared-state concurrency, networking std modules, self-hosting, debugger
+source maps (DAP), comptime (closed by S26 unless reopened), sized
+integer menu beyond `Int`/`Byte` (revisit if M7 FFI demands it).

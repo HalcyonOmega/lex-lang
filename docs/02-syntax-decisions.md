@@ -139,64 +139,101 @@ Later (M6): the LSP offers an autocorrect quick-fix for foreign syntax and
 `fmt` canonicalizes, so non-canonical input never survives to disk. True
 dual forms are rejected permanently.
 
+**S4 — Type annotations (M1)** *(ratified 2026-06-11)*: **`name: Type`**
+after the binding or parameter name (e.g. `val x: Int = 1`). Rejected:
+`Type name` before (C/Java).
+
+**S5 — Comments** *(ratified 2026-06-11)*: **`//`** to end of line.
+Rejected: `#`. Doc comments are S49 (M6/M13).
+
+**S7 — Error propagation (M4)** *(ratified 2026-06-11)*: postfix **`?`**
+on a fallible call (e.g. `parse(raw)?`). Prefix `try` recognized only for
+a teaching error (S14). Rejected: propagation-only-via-explicit-handling.
+
+**S13 — Logical and comparison operators (M1)** *(ratified 2026-06-11)*:
+**`&&` `||` `!`** for logic; **`==` `!=` `<` `>` `<=` `>=`** for
+comparisons. Word forms (`and`, `or`, `not`) recognized only for teaching
+errors (S14). Note: `or` as a *type* and *fallback* operator (S34/S35) is
+a separate token in expression/type context — not logical OR.
+
+**S17 — Compound assignment (M1)** *(ratified 2026-06-11)*: the full
+C-family set **`+=` `-=` `*=` `/=` `%=` `&=` `|=` `^=` `<<=` `>>=`**.
+`+=` `-=` `*=` `/=` on `Int` and `Float`; the rest on `Int` only.
+Left-hand side must be `var` or a `mut` parameter. Rejected: `=` only.
+
+**S15 — Binary profile / panic strategy** *(ratified 2026-06-11)*:
+**default build keeps unwinding** (`panic` can be caught inside generated
+test harnesses and task `join`). **`lex build --small`** (M6) uses
+`opt-level="z"`, full LTO, and **`panic=abort`**. Rejected: abort as the
+only mode.
+
+**S16 — Imports (M6+)** *(ratified 2026-06-11)*: two forms; **`as alias`
+is optional** in both. When omitted, the default namespace is the module
+name (see below).
+
+```
+import "grades/scoring";              // file path → namespace scoring
+import "grades/scoring" as g;         // same file, namespace g
+import scoring;                       // module by name → namespace scoring
+import scoring as gradebook;          // same module, namespace gradebook
+```
+
+1. **File import** — `import "<path>" [as alias];`  
+   `<path>` is a quoted string, relative to the **importing file's
+   directory**, using `/` (no `.lex` suffix; the compiler appends it).
+   Subdirectories allowed (`"util/text"`). Default namespace: the **last
+   path segment** (`"grades/scoring"` → `scoring.letter(…)`).
+
+2. **Module import** — `import <name> [as alias];`  
+   `<name>` is a bare identifier. The compiler searches **recursively from
+   the project root** for a module named `<name>`: either a file `name.lex`
+   anywhere under the root, or a directory `name/` containing `name.lex`
+   or `main.lex`. Skips `build/`, `target/`, and dot-directories.
+   **Project root** = the directory containing `lex.toml` when a manifest
+   exists (M12); otherwise the directory of the **entry** `.lex` file.
+   Ambiguous duplicate matches → **E0606** (lists every path found).
+
+Cross-file access uses `namespace.item` for every `pub` item (S18).
+Rejected: Rust `use a::b`, bare `import;` with no path or name (teaching
+error only per S14), required `as`.
+
+## Enforcement
+
+Ratified decisions are **frozen**. `cargo test` runs `tests/decisions.rs`,
+which fails if:
+
+- any `src/syntax.rs` entry is `(provisional)` while ratified in this file;
+- any open or deferred decision ID appears in `src/syntax.rs`;
+- the Provisional table below lists a real decision ID;
+- a staged decision loses its pinned error code in docs/04.
+
+Agents: after ratifying a row, update `syntax.rs` to `(ratified)`, clear
+the Provisional table row, and add a ui snapshot if behavior changes.
+
+## Staged implementation (ratified syntax, milestone pending)
+
+Syntax and semantics below are **decided** — do not re-litigate. Only the
+implementation milestone is pending.
+
+| ID  | Milestone | Enforcement today | Code |
+|-----|-----------|-------------------|------|
+| S7  | M4 | `?` parses until errors-as-values land | E0006 |
+| S16 | M6 | `import` statement parses until multi-file driver lands | E0019 |
+| S15 | M6 | default unwind in `src/main.rs`; `--small` + `panic=abort` in M6 | — |
+
 ## Provisional — currently in the code
 
 | ID  | Choice in code         | Where                |
 |-----|------------------------|----------------------|
-| S5  | `//` comments          | src/syntax.rs        |
-| S7  | `?` suffix             | src/syntax.rs        |
-| S13 | `&&` `||` `!` `==` `!=` `<` `>` `<=` `>=` | src/syntax.rs |
-| S17 | `+=` `-=` `*=` `/=` `%=` `&=` `|=` `^=` `<<=` `>>=` | src/syntax.rs |
-| S16 | `import "path" as alias` | src/syntax.rs      |
+| —   | *(none — Group 1 ratified 2026-06-11)* | |
 
 ## Open decisions — owner input needed
 
-**S4. Type annotations (M1).** `x: Int` after the name (Rust/Swift/TS,
-plays well with inference) / `Int x` before (C/Java). Provisional: `name: Type`.
-
-**S5. Comments.** `//` / `#`. Provisional: `//`.
-
-**S7. Error propagation (M4).** Suffix `?` (terse, Rust-familiar) / prefix
-`try` (reads in order: `try parse(x)`) / explicit `match` only (maximal
-clarity, maximal boilerplate). Provisional: **`?` suffix** — e.g.
-`parse_int(raw)?`. Prefix `try` recognized only to emit a teaching error
-(see S14).
-
-**S13. Logical and comparison operators (M1).** `and` / `or` / `not`
-(Stefik: word forms help novices) / `&&` / `||` / `!` with `==` `!=`
-`<` `>` `<=` `>=` (C-family, familiar from Rust/C++/JS). Provisional:
-**symbols** — `&&` `||` `!` for logic; `==` `!=` for equality; `<` `>`
-`<=` `>=` for ordering. Word forms (`and`, `or`, `not`) recognized only
-to emit a teaching error (see S14).
-
-**S14. Alias policy.** DIRECTION SET (owner): **no true aliases.** There
-is one canonical spelling of everything. Familiar-from-other-languages
-forms (`and`, `try`, `let`, `set`, `func`, `def`, `println`) are recognized by
-the parser ONLY to emit a teaching error naming the canonical form ("in
-Lex, write `fn` — fix: replace `def` with `fn`"). Later, the LSP/`fmt`
-may auto-rewrite these to the canonical form on save (autocorrect), once
-the formatter exists and runs by default (M6). Rejected: keeping both
-forms in real code (creates dialects; beginners must read both anyway).
-Build order: error-first now (M1), LSP autocorrect later (M6). Reserve
-error codes E0008+ for these.
-
-**S17. Compound assignment (M1).** Full C-family set: **`+=` `-=` `*=` `/=`
-`%=` `&=` `|=` `^=` `<<=` `>>=`** (`x += 1` means `x = x + 1`) / simple
-`=` only (force `x = x + 1` everywhere — one form, noisier). Provisional:
-all ten operators. **`+=` `-=` `*=` `/=`** on `Int` and `Float`; **`%=`
-`&=` `|=` `^=` `<<=` `>>=`** on `Int` only. Left-hand side must be a
-mutable binding (`var`) or `write` parameter.
-
-**S16. Module imports (multi-file, M6+).** How one file pulls in another
-when the opt-in package/multi-file story lands (Architecture R9). Options:
-`import "path" as alias` (Zig-like: path string + local name via `as`) /
-Rust `use path::item` (granular, unfamiliar to beginners) / Python
-`import module` (no path string, package layout magic). Provisional:
-**`import "path" as alias;`** — e.g. `import "grades/scoring" as scoring;`
-then call `scoring.letter_grade(x)`. Path is a quoted string relative to
-the project root (exact resolution deferred to M6 tooling). `func`/`def`
-are not import syntax; `use` / bare `import` recognized only for S14
-teaching errors when M6 lands.
+> **Ballots:** every open decision below (and all new ones for M3–M14)
+> has a full ballot — options, how Rust does it, expert lean, beginner
+> lean, recommendation — in **docs/06-decision-ballots.md**, grouped so
+> the owner decides one milestone-sized batch at a time. The rows here
+> are the registry; the ballots are the briefing.
 
 **S26. Compile-time execution (comptime) — DEFERRED, not open for work.**
 Zig-style `comptime`: run a subset of Lex at compile time for constants,
@@ -214,13 +251,40 @@ now: importing Rust's trait system verbatim into user-facing syntax.
 When designing S28, prefer diagnostics beginners can read over maximal
 flexibility.
 
-**S15. Binary profile / panic strategy.** Default build = speed-leaning
-(`-O`, strip, thin LTO) per Architecture R8. Open: should there be a
-`lex build --small` profile (`opt-level="z"`, full LTO) and should it (or
-even the default) use `panic=abort`? `abort` shrinks binaries and is
-arguably fine for a beginner language, but removes unwinding/`catch`
-semantics — a real behavior change. Provisional: default keeps unwinding;
-`--small` profile deferred to M6 tooling. Owner to confirm panic stance.
+### Registered for M3–M14 (see docs/06-decision-ballots.md for options)
+
+| ID  | Question                                            | Needed by |
+|-----|-----------------------------------------------------|-----------|
+| S29 | struct construction syntax                          | M3 |
+| S30 | enum declaration & variant syntax                   | M3 |
+| S31 | enum/Option destructuring (`is` patterns)           | M3 |
+| S32 | absence: `T?` / `some` / `none` spelling            | M3 |
+| S33 | generic type argument brackets (`[T]` vs `<T>`)     | M3 |
+| S34 | fallible return type spelling (`T or E`)            | M4 |
+| S35 | error handling ergonomics (`or` fallback)           | M4 |
+| S36 | `panic` / `assert` builtins                         | M4 |
+| S37 | list literal                                        | M5 |
+| S38 | map literal                                         | M5 |
+| S39 | indexing & out-of-bounds behavior                   | M5 |
+| S40 | slicing semantics                                   | M5 |
+| S41 | string model: `Char`, `len`, iteration              | M5 |
+| S42 | numeric types & conversions (no `as`)               | M5/M10 |
+| S43 | test syntax (`test "name" { }`)                     | M6 |
+| S44 | fmt style constants                                 | M6 |
+| S49 | doc comments (`///`)                                | M6/M13 |
+| S50 | Rust FFI `extern` syntax                            | M7 |
+| S46 | lambda syntax (`(x) => …`)                          | M8 |
+| S47 | function types & closure capture rules              | M8 |
+| S45 | generic function/type syntax (`fn f[T: Bound]`)     | M9 |
+| S48 | trait-as-type = auto dynamic dispatch               | M9 |
+| S51 | std library import spelling (`import "std/fs"`)     | M10 |
+| S54 | naming convention lint (snake_case)                 | M10 |
+| S53 | concurrency surface (tasks + channels)              | M11 |
+| S52 | package manifest format & commands (`lex.toml`)     | M12 |
+
+S26 (comptime) and S28 (traits) keep their entries above; their ballots
+live in docs/06 Group 6 (S28 becomes the concrete trait-syntax ballot;
+S26's recommendation is close-as-rejected once S28/S45 are ratified).
 
 ## Decision log
 
@@ -248,3 +312,10 @@ semantics — a real behavior change. Provisional: default keeps unwinding;
 | 2026-06-11 | S25 | comparison distribution: `x == 1 || 2` | owner |
 | 2026-06-11 | S27 | `self`; `c.area()`; inline + `impl` methods | owner |
 | 2026-06-11 | S28 | traits deferred; owner plans to add later | owner |
+| 2026-06-11 | S4  | `name: Type` annotations                  | owner |
+| 2026-06-11 | S5  | `//` comments                             | owner |
+| 2026-06-11 | S7  | `?` error propagation                     | owner |
+| 2026-06-11 | S13 | symbol logic/comparison operators         | owner |
+| 2026-06-11 | S17 | full compound-assignment set              | owner |
+| 2026-06-11 | S15 | unwind default; abort in `--small`        | owner |
+| 2026-06-11 | S16 | file + module imports; optional `as`      | owner |

@@ -127,10 +127,9 @@ fn build(file: &str, rust_code: &str) {
         exit(1);
     });
 
-    // Size strategy (docs/03 R8): strip symbols and let LLVM drop anything
-    // the program doesn't use. `-O` is opt-level 2. Truly size-minimal
-    // builds (opt-level "z", panic=abort) are a future `--small` profile
-    // and a pending decision (S15); v1 keeps the speed-leaning default.
+    // Size strategy (docs/03 R8, S15 ratified): default keeps unwinding.
+    // `lex build --small` (opt-level "z", panic=abort) arrives in M6.
+    // `-O` is opt-level 2; strip + thin LTO drop unused code.
     let out = Command::new("rustc")
         .args([
             "--edition", "2021",

@@ -41,6 +41,7 @@ pub enum TokKind {
     KwReturn,
     KwLoop,
     KwUnsafe,
+    KwImport,
     Ident(String),
     Str(Vec<StrTokPart>),
     Int(i64),
@@ -148,6 +149,7 @@ pub fn describe(kind: &TokKind) -> String {
         TokKind::KwReturn => format!("the keyword `{}`", syntax::KW_RETURN),
         TokKind::KwLoop => format!("the keyword `{}`", syntax::KW_LOOP),
         TokKind::KwUnsafe => format!("the keyword `{}`", syntax::KW_UNSAFE),
+        TokKind::KwImport => format!("the keyword `{}`", syntax::KW_IMPORT),
         TokKind::Ident(name) => format!("the name `{}`", name),
         TokKind::Str(_) => "a piece of quoted text".to_string(),
         TokKind::Int(_) => "a number".to_string(),
@@ -225,6 +227,7 @@ fn keyword(name: &str) -> Option<TokKind> {
         s if s == syntax::KW_RETURN => Some(TokKind::KwReturn),
         s if s == syntax::KW_LOOP => Some(TokKind::KwLoop),
         s if s == syntax::KW_UNSAFE => Some(TokKind::KwUnsafe),
+        s if s == syntax::KW_IMPORT => Some(TokKind::KwImport),
         _ => None,
     }
 }

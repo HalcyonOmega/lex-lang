@@ -1,5 +1,5 @@
 // Companion module for 03_syntax_showcase.lex (S16 preview).
-// Imported as: import "grades/scoring" as scoring;
+// Imported as: import "grades/scoring";  or  import scoring;
 // Only pub items are visible outside this file (S18).
 
 pub fn parse_int(read raw: String) -> Result<Int, String> {

@@ -22,6 +22,16 @@ cargo build
 cargo test          # ui snapshots + golden examples
 ```
 
+### Nix / NixOS
+
+```bash
+nix build                    # produces ./result/bin/lex
+nix develop                  # dev shell with cargo + rustc + lex
+```
+
+See **docs/nix.md** for adding `lex` to `configuration.nix` via a flake
+input.
+
 ## The pitch in three lines
 
 ```

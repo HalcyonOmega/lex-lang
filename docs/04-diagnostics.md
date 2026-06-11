@@ -80,6 +80,7 @@ before continuing.
 | E0016 | parse | teaching: `match` → `switch` (S24)        |
 | E0017 | parse | teaching: `read` → default parameter access (S10) |
 | E0018 | parse | teaching: `write` → `mut` (S10)          |
+| E0019 | parse | staged: `import` (multi-file) arrives in M6 (S16) |
 | E0101 | sema  | no `main` function                        |
 | E0102 | sema  | unknown function (with suggestion)        |
 | E0103 | sema  | `print` arity                             |

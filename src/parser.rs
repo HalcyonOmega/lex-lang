@@ -107,6 +107,30 @@ impl<'a> Parser<'a> {
 
     // --- items ----------------------------------------------------------
 
+    /// S16 (ratified, staged M6): parse and reject `import` with E0019.
+    fn import_staged(&mut self) {
+        let start = self.bump().span;
+        while !matches!(self.peek().kind, TokKind::Semi | TokKind::Eof) {
+            self.bump();
+        }
+        if matches!(self.peek().kind, TokKind::Semi) {
+            self.bump();
+        }
+        self.diags.push(Diagnostic::error(
+            "E0019",
+            format!("`{}` doesn't work yet", syntax::KW_IMPORT),
+            "multi-file programs arrive in M6 — the import forms are already decided (S16)"
+                .to_string(),
+            format!(
+                "keep everything in one file for now; later: `{} \"path\";`, `{} name;`, or add `{} alias`",
+                syntax::KW_IMPORT,
+                syntax::KW_IMPORT,
+                syntax::KW_AS
+            ),
+            Some(start),
+        ));
+    }
+
     fn program(&mut self) -> Program {
         let mut items = Vec::new();
         loop {
@@ -145,18 +169,24 @@ impl<'a> Parser<'a> {
                         "E0015",
                         format!("{} does not use `{}`", syntax::LANG_NAME, syntax::FOREIGN_USE),
                         format!(
-                            "other files are brought in with `{} \"path\" {} name;` (arrives in M6)",
+                            "other files are brought in with `{} \"path\"` or `{} name` (S16; M6)",
                             syntax::KW_IMPORT,
-                            syntax::KW_AS
+                            syntax::KW_IMPORT
                         ),
                         format!(
-                            "remove this line for now; write `{} \"path\" {} name;` once imports land",
+                            "replace with `{} \"path\";`, `{} name;`, or `{} \"path\" {} alias;`",
+                            syntax::KW_IMPORT,
+                            syntax::KW_IMPORT,
                             syntax::KW_IMPORT,
                             syntax::KW_AS
                         ),
                         Some(t.span),
                     ));
                     self.sync_stmt();
+                    continue;
+                }
+                TokKind::KwImport => {
+                    self.import_staged();
                     continue;
                 }
                 other => {

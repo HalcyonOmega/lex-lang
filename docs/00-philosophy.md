@@ -73,3 +73,11 @@ binary sizes; a required project structure or package manifest.
 
 Someone writing their first compiled language: CLI tools, small services,
 learning projects. Not (yet): kernels, embedded, async network servers.
+
+**Owner direction (2026-06-11):** the bar for v1.0 rises to a second
+audience — experienced developers who would otherwise reach for Go, Zig,
+C, or Rust for small tools, and who should *prefer* Lex: minimal
+friction by default, control when wanted, with performance and safety
+enforced underneath by the Rust backend and the ownership model. The
+roadmap (docs/05) reflects this; the ranked priorities above do not
+change — beginner experience still outranks everything but safety.
