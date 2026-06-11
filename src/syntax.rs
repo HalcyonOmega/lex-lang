@@ -70,6 +70,12 @@ pub const KW_STORED: &str = "ref";
 /// M2: struct definition keyword.
 pub const KW_STRUCT: &str = "struct";
 
+/// S27 (ratified M3): method receiver name.
+pub const KW_SELF: &str = "self";
+
+/// S27 (ratified M3): external method block — `impl Type { ... }`.
+pub const KW_IMPL: &str = "impl";
+
 /// M2: compile-time constant (emits Rust `const` or `static`).
 pub const KW_CONST: &str = "const";
 

@@ -2,10 +2,10 @@
 //! (invariant I3): by the time a Program reaches codegen, it must be
 //! impossible for the generated Rust to fail to compile (invariant I2).
 //!
-//! M1 adds full local type inference and checking, mutability rules,
-//! comparison distribution (S25), definite-return analysis, and a minimal
-//! move tracker for non-copyable values (the full ownership checker is M2;
-//! this small one exists only to uphold I2 until then).
+//! M1: type inference, mutability, comparison distribution (S25),
+//! definite-return analysis. M2: ownership — moves, call-site `mut`/`take`,
+//! view returns, use-after-move, and borrow rules that keep generated Rust
+//! sound without surfacing Rust concepts to users.
 
 use crate::ast::{
     AccessConvention, BinOp, Binding, Call, ConstAttr, ElseBranch, Expr, IfStmt, Item, Program,
@@ -209,6 +209,7 @@ pub fn check(prog: &mut Program) -> Vec<Diagnostic> {
                 loop_depth: 0,
                 in_unsafe: false,
                 ret: f.return_type.clone(),
+                view_return: f.is_view_return,
                 fn_name: f.name.clone(),
             };
             for p in &f.params {
@@ -271,12 +272,13 @@ struct Checker<'a> {
     consts: &'a HashMap<String, Type>,
     diags: Vec<Diagnostic>,
     scopes: Vec<HashMap<String, LocalInfo>>,
-    /// name -> span of the use that gave the value away (minimal M1 move
-    /// tracking; the real ownership checker is M2).
+    /// name -> span of the use that gave the value away.
     moved: HashMap<String, Span>,
     loop_depth: usize,
     in_unsafe: bool,
     ret: Option<Type>,
+    /// `-> view T` on this function (borrowed return).
+    view_return: bool,
     fn_name: String,
 }
 
@@ -461,7 +463,8 @@ impl<'a> Checker<'a> {
                         // borrow in the generated Rust (I2) — require a copy.
                         if let Expr::Ident(n, nspan) = &*e {
                             if let Some(info) = self.lookup(n) {
-                                if !info.ty.is_scalar()
+                                if !self.view_return
+                                    && !info.ty.is_scalar()
                                     && matches!(
                                         info.param_conv,
                                         Some(AccessConvention::Read)
@@ -487,6 +490,15 @@ impl<'a> Checker<'a> {
                                     ));
                                 }
                             }
+                        }
+                        if self.view_return && !self.expr_ok_for_view_return(e) {
+                            self.diags.push(Diagnostic::error(
+                                "E0206",
+                                "this value can't be handed back as a shared view".to_string(),
+                                "a `view` return may only point at a parameter, a whole-number or yes/no name, or a const — not at fresh text you just made here".to_string(),
+                                "return a parameter or const, copy with `.clone()` into an owned return type, or change `-> view` to `->`".to_string(),
+                                Some(e.span()),
+                            ));
                         }
                         self.note_move_if_direct_ident(e);
                         if let Some(et) = et {
@@ -796,6 +808,22 @@ impl<'a> Checker<'a> {
             fix,
             Some(span),
         ));
+    }
+
+    /// Whether `e` may be returned through `-> view T` (reference-safe).
+    fn expr_ok_for_view_return(&self, e: &Expr) -> bool {
+        match e {
+            Expr::Ident(name, _) => {
+                if self.consts.contains_key(name) {
+                    return true;
+                }
+                if let Some(info) = self.lookup(name) {
+                    return info.ty.is_scalar() || info.param_conv.is_some();
+                }
+                false
+            }
+            _ => false,
+        }
     }
 
     fn mark_moved(&mut self, name: String, span: Span) {
@@ -1270,7 +1298,19 @@ impl<'a> Checker<'a> {
             ));
         }
 
+        let mut mut_borrowed: HashSet<String> = HashSet::new();
+        let mut read_borrowed: HashSet<String> = HashSet::new();
+
         for (i, arg) in call.args.iter_mut().enumerate() {
+            if let Expr::Ident(name, span) = &arg.expr {
+                if mut_borrowed.contains(name) {
+                    self.diags.push(aliasing_while_mut(name, *span));
+                } else if arg.convention == AccessConvention::Mutate
+                    && read_borrowed.contains(name)
+                {
+                    self.diags.push(aliasing_mut_after_read(name, *span));
+                }
+            }
             let arg_ty = self.infer(&mut arg.expr);
             let Some((param_conv, param_ty)) = sig.params.get(i) else {
                 continue;
@@ -1420,6 +1460,22 @@ impl<'a> Checker<'a> {
                 _ => {}
             }
 
+            if arg.convention == AccessConvention::Mutate {
+                if let Expr::Ident(name, _) = &arg.expr {
+                    mut_borrowed.insert(name.clone());
+                }
+            }
+            if let (Some((param_conv, param_ty)), Expr::Ident(name, _)) =
+                (sig.params.get(i), &arg.expr)
+            {
+                if matches!(param_conv, AccessConvention::Read)
+                    && arg.convention == AccessConvention::Read
+                    && !param_ty.is_scalar()
+                {
+                    read_borrowed.insert(name.clone());
+                }
+            }
+
             if self.loop_depth > 0 {
                 if let Expr::Ident(name, span) = &arg.expr {
                     if let Some(info) = self.lookup(name) {
@@ -1477,6 +1533,43 @@ fn type_fix_hint(want: &Type, got: &Type) -> String {
         (Type::String, _) => "put the value in text with interpolation: \"{x}\"".to_string(),
         _ => format!("use {} here", want.show()),
     }
+}
+
+fn aliasing_while_mut(name: &str, span: Span) -> Diagnostic {
+    Diagnostic::error(
+        "E0204",
+        format!(
+            "`{}` is being changed in this call, so it can't be used again here",
+            name
+        ),
+        "while something is being changed, nobody else may be looking at it"
+            .to_string(),
+        format!(
+            "pass `{} {}` only once, or copy first with `{} .clone()`",
+            syntax::KW_MUTATE,
+            name,
+            name
+        ),
+        Some(span),
+    )
+}
+
+fn aliasing_mut_after_read(name: &str, span: Span) -> Diagnostic {
+    Diagnostic::error(
+        "E0204",
+        format!(
+            "`{}` is already shared in this call, so it can't be changed here too",
+            name
+        ),
+        "while something is being looked at, nobody else may be changing it"
+            .to_string(),
+        format!(
+            "drop the extra use of `{}`, or copy first with `{} .clone()`",
+            name,
+            name
+        ),
+        Some(span),
+    )
 }
 
 fn loop_control_outside(kw: &str, span: Span) -> Diagnostic {

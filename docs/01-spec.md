@@ -92,7 +92,7 @@ errors (S14, E0008–E0016) recognize foreign spellings — `def`, `let`,
 `set`, `println`, `and`/`or`/`not`, `Text`, `try`, `use`, `match` — and
 name the Lex form.
 
-## M2 — ownership transpiler (partial; growing)
+## M2 — ownership (done)
 
 Borrow-checker mechanics live in the transpiler; tier-1 users never write
 `&`, `&mut`, `*`, or lifetime parameters.
@@ -108,14 +108,43 @@ Borrow-checker mechanics live in the transpiler; tier-1 users never write
 Call-site rules: `mut` and `take` must match the parameter; omitting `take`
 on a clonable type inserts `.clone()` with lint **L0201**; on a
 non-clonable type → **E0201**. Omitting `mut` on a mutable parameter →
-**E0202**. `*` outside `unsafe` → **E0208**.
+**E0202**. Using the same name twice in one call while `mut` is active →
+**E0204**. `*` outside `unsafe` → **E0208**.
 
 `const NAME = value` always looks the same; the transpiler emits Rust
 `const` or `static` when the address is taken or the type needs it.
 
 Aliasing rule, stated for humans: *while something is being changed,
-nobody else may be looking at it.* All E02xx diagnostics (reserved range)
-must explain violations in those terms, with a what/why/fix.
+nobody else may be looking at it.* Foreign `read`/`write` spellings get
+teaching errors **E0017**/**E0018** (S14). A `view` return may only hand
+back a parameter, a scalar local, or a const — not fresh text (**E0206**).
+
+## M3 — data & methods (planned; not implemented)
+
+Structs and enums carry fields; methods attach behavior (S27).
+
+```
+struct Circle {
+    radius: Float;
+
+    fn area(self) -> Float {
+        return 3.14159 * radius * radius;
+    }
+}
+
+impl Circle {
+    fn unit() -> Circle {
+        return Circle { radius: 1.0 };
+    }
+}
+```
+
+- **`self`** is the receiver; prefix with `mut` or `take` like any parameter.
+- Invoke with **`c.area()`** (not `area(c)`).
+- Methods may live **inside** the type **or** in **`impl Type { }`** — same rules either way.
+- Static methods omit `self` (e.g. `Circle.unit()`).
+- Enum `switch` arms must be exhaustive; missing cases are a compile error.
+- **Traits/interfaces (S28)** are deferred; no `trait` / `implements` syntax yet.
 
 ## Deliberately absent
 

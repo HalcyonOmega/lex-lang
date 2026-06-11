@@ -78,6 +78,8 @@ before continuing.
 | E0014 | parse | teaching: `try` → `?` (M4)                |
 | E0015 | parse | teaching: `use` → `import` (M6)           |
 | E0016 | parse | teaching: `match` → `switch` (S24)        |
+| E0017 | parse | teaching: `read` → default parameter access (S10) |
+| E0018 | parse | teaching: `write` → `mut` (S10)          |
 | E0101 | sema  | no `main` function                        |
 | E0102 | sema  | unknown function (with suggestion)        |
 | E0103 | sema  | `print` arity                             |
@@ -103,7 +105,8 @@ before continuing.
 | E0201 | sema  | `take` required; value can't be copied    |
 | E0202 | sema  | `mut` required at call site               |
 | E0203 | sema  | `take` on a non-consuming parameter       |
-| E0206 | sema  | *reserved for M2*: `view` on invalid return type |
+| E0204 | sema  | same value used while `mut` is active in one call |
+| E0206 | sema  | `view` return can't point at this value   |
 | E0207 | sema  | multiple unlabeled `ref` fields           |
 | E0208 | sema  | `*` outside `unsafe`                      |
 | L0201 | sema  | implicit `.clone()` at call site (lint)   |

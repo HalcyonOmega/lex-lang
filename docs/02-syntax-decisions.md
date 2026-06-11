@@ -109,6 +109,18 @@ for demand. Rejected: `\{`, full C escape set.
 prints with a decimal part — `-5.0` prints `-5.0`, never `-5`. The value
 visibly stays a Float. Rejected: Rust's `Display` default (drops `.0`).
 
+**S27 — Methods (M3)** *(ratified 2026-06-11)*: instance methods use
+**`self`** as the receiver name, with the same access prefixes as
+parameters (`mut self`, `take self`; default is shared read). Call with
+**`value.method(args)`** — e.g. `c.area()`. Methods may be written **inside
+the `struct` / `enum` body** (C++-style) **or** in a separate top-level
+**`impl Type { ... }`** block (Rust-style layout, Lex-owned semantics).
+Both forms are equivalent; pick whichever keeps the file readable. A
+method without `self` in either place is a **static** method on the type
+(e.g. `Circle.unit()`). Rejected for M3: separate `interface` /
+`trait` types (see S28); inheritance; method invocation as
+`area(c)` when `c.area()` is available.
+
 **S25 — Comparison distribution (M1)** *(ratified 2026-06-11)*: in a
 `&&`/`||` chain, when the right side is a plain value instead of a yes/no,
 the nearest comparison to its left is re-applied to it:
@@ -190,9 +202,17 @@ teaching errors when M6 lands.
 Zig-style `comptime`: run a subset of Lex at compile time for constants,
 specialized functions, and unrolled loops — evaluated in sema, lowered to
 plain Rust by codegen (see architecture R1/R2). Postponed until M5+
-data exists to motivate generics; Tier 2 per philosophy C1. When
-revisiting, decide against Rust traits as the user-facing model. No
-syntax ratified; do not implement until owner promotes from deferred.
+data exists to motivate generics; Tier 2 per philosophy C1. No syntax
+ratified; do not implement until owner promotes from deferred.
+
+**S28. Traits / interfaces — DEFERRED, owner intends to add.** Polymorphism
+via named capability types (`trait` / `interface` — spelling TBD) is
+**not in M3**. The owner has confirmed traits will be needed; syntax,
+milestone slot, and whether Lex exposes Rust-style trait objects or a
+simpler model are **open**. Do not implement until ratified. Rejected for
+now: importing Rust's trait system verbatim into user-facing syntax.
+When designing S28, prefer diagnostics beginners can read over maximal
+flexibility.
 
 **S15. Binary profile / panic strategy.** Default build = speed-leaning
 (`-O`, strip, thin LTO) per Architecture R8. Open: should there be a
@@ -226,3 +246,5 @@ semantics — a real behavior change. Provisional: default keeps unwinding;
 | 2026-06-11 | S23 | `break` + `continue`              | owner |
 | 2026-06-11 | S24 | `switch` with condition arms (not `match`) | owner |
 | 2026-06-11 | S25 | comparison distribution: `x == 1 || 2` | owner |
+| 2026-06-11 | S27 | `self`; `c.area()`; inline + `impl` methods | owner |
+| 2026-06-11 | S28 | traits deferred; owner plans to add later | owner |

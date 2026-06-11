@@ -254,7 +254,7 @@ fn emit_func(cx: &Cx, f: &Func, out: &mut String) {
             },
         );
     }
-    emit_stmts(cx, &f.body, &mut env, out, 1);
+    emit_stmts(cx, &f.body, &mut env, out, 1, f.is_view_return);
     out.push_str("}\n\n");
 }
 
@@ -264,9 +264,10 @@ fn emit_stmts(
     env: &mut HashMap<String, Slot>,
     out: &mut String,
     indent: usize,
+    view_return: bool,
 ) {
     for stmt in stmts {
-        emit_stmt(cx, stmt, env, out, indent);
+        emit_stmt(cx, stmt, env, out, indent, view_return);
     }
 }
 
@@ -276,6 +277,7 @@ fn emit_stmt(
     env: &mut HashMap<String, Slot>,
     out: &mut String,
     indent: usize,
+    view_return: bool,
 ) {
     let pad = "    ".repeat(indent);
     match stmt {
@@ -311,15 +313,20 @@ fn emit_stmt(
             out.push_str(&format!("{}{};\n", pad, emit_expr_stmt(cx, e, env)));
         }
         Stmt::Return(Some(e), _) => {
-            out.push_str(&format!("{}return {};\n", pad, emit_expr(cx, e, env)));
+            let val = if view_return {
+                emit_view_return(cx, e, env)
+            } else {
+                emit_expr(cx, e, env)
+            };
+            out.push_str(&format!("{}return {};\n", pad, val));
         }
         Stmt::Return(None, _) => {
             out.push_str(&format!("{}return;\n", pad));
         }
-        Stmt::If(ifs) => emit_if(cx, ifs, env, out, indent),
+        Stmt::If(ifs) => emit_if(cx, ifs, env, out, indent, view_return),
         Stmt::While { cond, body, .. } => {
             out.push_str(&format!("{}while {} {{\n", pad, emit_expr(cx, cond, env)));
-            emit_stmts(cx, body, env, out, indent + 1);
+            emit_stmts(cx, body, env, out, indent + 1, view_return);
             out.push_str(&format!("{}}}\n", pad));
         }
         Stmt::For {
@@ -346,7 +353,7 @@ fn emit_stmt(
                     deref: false,
                 },
             );
-            emit_stmts(cx, body, env, out, indent + 1);
+            emit_stmts(cx, body, env, out, indent + 1, view_return);
             match prev {
                 Some(p) => {
                     env.insert(var.clone(), p);
@@ -379,13 +386,13 @@ fn emit_stmt(
                     kw,
                     emit_expr(cx, &arm.cond, env)
                 ));
-                emit_stmts(cx, &arm.body, env, out, indent + 2);
+                emit_stmts(cx, &arm.body, env, out, indent + 2, view_return);
             }
             if arms.is_empty() {
-                emit_stmts(cx, else_body, env, out, indent + 1);
+                emit_stmts(cx, else_body, env, out, indent + 1, view_return);
             } else {
                 out.push_str(&format!("{}}} else {{\n", inner_pad));
-                emit_stmts(cx, else_body, env, out, indent + 2);
+                emit_stmts(cx, else_body, env, out, indent + 2, view_return);
                 out.push_str(&format!("{}}}\n", inner_pad));
             }
             out.push_str(&format!("{}}}\n", pad));
@@ -394,14 +401,33 @@ fn emit_stmt(
         Stmt::Continue(_) => out.push_str(&format!("{}continue;\n", pad)),
         Stmt::Loop(inner, _) => {
             out.push_str(&format!("{}loop {{\n", pad));
-            emit_stmts(cx, inner, env, out, indent + 1);
+            emit_stmts(cx, inner, env, out, indent + 1, view_return);
             out.push_str(&format!("{}}}\n", pad));
         }
         Stmt::Unsafe(inner, _) => {
             out.push_str(&format!("{}unsafe {{\n", pad));
-            emit_stmts(cx, inner, env, out, indent + 1);
+            emit_stmts(cx, inner, env, out, indent + 1, view_return);
             out.push_str(&format!("{}}}\n", pad));
         }
+    }
+}
+
+/// `-> view T` returns a reference; emit `&place` or the existing borrow.
+fn emit_view_return(cx: &Cx, e: &Expr, env: &HashMap<String, Slot>) -> String {
+    match e {
+        Expr::Ident(name, _) => {
+            if let Some(c) = cx.consts.get(name) {
+                return format!("&{}", c);
+            }
+            if let Some(slot) = env.get(name) {
+                if slot.deref {
+                    return slot.rust_name.clone();
+                }
+                return format!("&{}", slot.rust_name);
+            }
+            place_of(env, name)
+        }
+        _ => emit_expr(cx, e, env),
     }
 }
 
@@ -411,22 +437,23 @@ fn emit_if(
     env: &mut HashMap<String, Slot>,
     out: &mut String,
     indent: usize,
+    view_return: bool,
 ) {
     let pad = "    ".repeat(indent);
     out.push_str(&format!("{}if {} {{\n", pad, emit_expr(cx, &ifs.cond, env)));
-    emit_stmts(cx, &ifs.then_body, env, out, indent + 1);
+    emit_stmts(cx, &ifs.then_body, env, out, indent + 1, view_return);
     match &ifs.else_branch {
         None => out.push_str(&format!("{}}}\n", pad)),
         Some(ElseBranch::Else(body)) => {
             out.push_str(&format!("{}}} else {{\n", pad));
-            emit_stmts(cx, body, env, out, indent + 1);
+            emit_stmts(cx, body, env, out, indent + 1, view_return);
             out.push_str(&format!("{}}}\n", pad));
         }
         Some(ElseBranch::ElseIf(next)) => {
             out.push_str(&format!("{}}} else ", pad));
             // Re-emit the nested if at column 0 of this line.
             let mut nested = String::new();
-            emit_if(cx, next, env, &mut nested, indent);
+            emit_if(cx, next, env, &mut nested, indent, view_return);
             // Trim the pad the nested emit added so it joins `else `.
             let trimmed = nested.trim_start_matches(&pad).to_string();
             out.push_str(&trimmed);

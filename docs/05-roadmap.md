@@ -29,22 +29,25 @@ chains (S25). No autocorrect yet — that's M6/LSP.
 **Exit:** examples 03–07 (fizzbuzz-class programs + switch) run; ui suite
 covers every new error; type errors name both types in plain words. ✓
 
-## M2 — Ownership v1  ★ the crown jewel
+## M2 — Ownership v1  *(done; verified 2026-06-11)* ★ the crown jewel
 
 Moves, implicit copy for scalars, explicit `.clone()`, parameter access
-keywords (S10: `read`/`write`/`take`), the full ownership checker in
-sema, E02xx diagnostics written to docs/04 voice rules. References cannot
-be stored or returned — therefore no lifetime syntax exists.
+keywords (S10: default/`mut`/`take`/`view`/`ref`), the ownership checker
+in sema, E02xx diagnostics written to docs/04 voice rules. Teaching errors
+for foreign `read`/`write` (E0017/E0018). References cannot be stored or
+returned in tier 1 — therefore no lifetime syntax exists.
 **Exit:** an example that *fails* ownership exists for every E02xx code,
-each with a snapshot whose fix line compiles when applied; golden tests
-prove rustc never rejects what sema passes (the verifier earning its keep).
-This milestone is where priorities 1 and 2 must both hold; budget 2–3×
-the effort of any other milestone.
+each with a `.fixed.lex` companion that compiles (`tests/ui_fixes.rs`);
+lint snapshots in `tests/ui_lint/`; golden tests prove rustc never rejects
+what sema passes (the verifier earning its keep). ✓
 
 ## M3 — Data
 
-Structs, enums (sum types), `match` with exhaustiveness ("you forgot the
-`Circle` case"), methods. No inheritance, ever (non-goal).
+Structs, enums (sum types), `switch` exhaustiveness for enums ("you
+forgot the `Circle` case"), methods (S27: `self`, `c.area()`, definable
+inside the type or in `impl Type { }` blocks). No inheritance, ever
+(non-goal). Traits/interfaces (S28) are explicitly out of M3 but
+planned for a later milestone.
 **Exit:** a shapes/state-machine example; exhaustiveness errors list the
 missing cases verbatim.
 
@@ -88,7 +91,8 @@ importing Rust's type system.
 
 ## Deferred indefinitely (owner can promote)
 
-Async, user macros, traits/generics, threads & channels, package manager,
+Async, user macros, generics (traits are S28 — planned, not indefinite),
+threads & channels, package manager,
 self-hosting, debugger source maps.
 
 **Comptime (Zig-style compile-time execution)** — deferred to Tier 2,

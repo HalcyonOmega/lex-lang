@@ -55,9 +55,8 @@ fn main() {
 #[test]
 fn view_return_transpiles_to_ref() {
     let src = r#"
-fn peek() -> view String {
-    val s: String = "ok";
-    return s;
+fn peek(msg: String) -> view String {
+    return msg;
 }
 
 fn main() {
@@ -75,6 +74,22 @@ fn main() {
         "view return should use elided lifetime, not explicit: {}",
         out.rust
     );
+}
+
+#[test]
+fn view_return_local_text_is_error() {
+    let src = r#"
+fn bad() -> view String {
+    val msg: String = "ok";
+    return msg;
+}
+
+fn main() {
+    print(0);
+}
+"#;
+    let diags = lex::compile(src).expect_err("should error");
+    assert!(diags.iter().any(|d| d.code == "E0206"));
 }
 
 #[test]
@@ -145,6 +160,22 @@ fn main() {
         "address-taken const should emit static: {}",
         out.rust
     );
+}
+
+#[test]
+fn same_call_mut_and_read_is_error() {
+    let src = r#"
+fn both(mut a: Int, b: Int) {
+    print(b);
+}
+
+fn main() {
+    var x: Int = 1;
+    both(mut x, x);
+}
+"#;
+    let diags = lex::compile(src).expect_err("should error");
+    assert!(diags.iter().any(|d| d.code == "E0204"));
 }
 
 #[test]

@@ -27,6 +27,10 @@ fn ui_snapshots() {
             continue;
         }
         let name = path.file_name().unwrap().to_string_lossy().into_owned();
+        // Companion programs that apply the Fix: from a sibling ui test.
+        if name.contains(".fixed.") {
+            continue;
+        }
         let src = fs::read_to_string(&path).unwrap();
         // Stable path string so snapshots match on every machine.
         let shown_path = format!("tests/ui/{}", name);

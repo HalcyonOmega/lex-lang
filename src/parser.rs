@@ -1053,6 +1053,51 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_access_prefix(&mut self) -> AccessConvention {
+        if let TokKind::Ident(name) = self.peek().kind.clone() {
+            match name.as_str() {
+                syntax::FOREIGN_READ => {
+                    let span = self.peek().span;
+                    self.bump();
+                    self.diags.push(Diagnostic::error(
+                        "E0017",
+                        format!(
+                            "shared access is written with no word in front — not `{}`",
+                            syntax::FOREIGN_READ
+                        ),
+                        "Lex has exactly one spelling for each thing, so all code reads the same"
+                            .to_string(),
+                        format!(
+                            "remove `{}` and write `name: Type`",
+                            syntax::FOREIGN_READ
+                        ),
+                        Some(span),
+                    ));
+                    return AccessConvention::Read;
+                }
+                syntax::FOREIGN_WRITE => {
+                    let span = self.peek().span;
+                    self.bump();
+                    self.diags.push(Diagnostic::error(
+                        "E0018",
+                        format!(
+                            "changeable access is written `{}`, not `{}`",
+                            syntax::KW_MUTATE,
+                            syntax::FOREIGN_WRITE
+                        ),
+                        "Lex has exactly one spelling for each thing, so all code reads the same"
+                            .to_string(),
+                        format!(
+                            "replace `{}` with `{}`",
+                            syntax::FOREIGN_WRITE,
+                            syntax::KW_MUTATE
+                        ),
+                        Some(span),
+                    ));
+                    return AccessConvention::Mutate;
+                }
+                _ => {}
+            }
+        }
         match self.peek().kind {
             TokKind::KwMutate => {
                 self.bump();
