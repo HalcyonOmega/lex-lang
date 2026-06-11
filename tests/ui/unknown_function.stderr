@@ -1,7 +1,7 @@
-error[E0102]: nothing named `pirnt` exists here
+Error [E0102]: nothing named `pirnt` exists here
   --> tests/ui/unknown_function.lex:2:5
     |
-  2 |     pirnt("hi")
+  2 |     pirnt("hi");
     |     ^^^^^
- why: only functions that have been defined (or built in, like `print`) can be called
- fix: did you mean `print`?
+ Why: only functions that have been defined (or built in, like `print`) can be called
+ Fix: did you mean `print`?

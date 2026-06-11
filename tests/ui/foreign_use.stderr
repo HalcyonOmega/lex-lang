@@ -1,0 +1,7 @@
+Error [E0015]: Lex does not use `use`
+  --> tests/ui/foreign_use.lex:1:1
+    |
+  1 | use grades;
+    | ^^^
+ Why: other files are brought in with `import "path" as name;` (arrives in M6)
+ Fix: remove this line for now; write `import "path" as name;` once imports land

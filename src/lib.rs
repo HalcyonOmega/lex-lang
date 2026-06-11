@@ -22,10 +22,14 @@ pub struct CompileOutput {
     pub lints: Vec<Diagnostic>,
 }
 
-/// Run the full front end on source text.
+/// Run the full front end on source text. All lex errors (then all parse
+/// errors) surface in one run — M1 error recovery.
 pub fn compile(src: &str) -> Result<CompileOutput, Vec<Diagnostic>> {
-    let toks = lexer::lex(src).map_err(|d| vec![d])?;
-    let mut prog = parser::parse(&toks).map_err(|d| vec![d])?;
+    let (toks, lex_diags) = lexer::lex(src);
+    if !lex_diags.is_empty() {
+        return Err(lex_diags);
+    }
+    let mut prog = parser::parse(&toks)?;
     let diags = sema::check(&mut prog);
     let mut errors = Vec::new();
     let mut lints = Vec::new();

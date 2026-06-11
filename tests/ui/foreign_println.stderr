@@ -1,0 +1,7 @@
+Error [E0011]: Lex calls it `print`, not `println`
+  --> tests/ui/foreign_println.lex:2:5
+    |
+  2 |     println("hi");
+    |     ^^^^^^^
+ Why: `print` already ends the line for you
+ Fix: replace `println` with `print`

@@ -1,0 +1,7 @@
+Error [E0117]: `.upper` doesn't exist yet
+  --> tests/ui/member_staged.lex:3:13
+    |
+  3 |     print(s.upper());
+    |             ^^^^^
+ Why: fields and methods arrive in M3; today the only one is `.clone()`
+ Fix: remove `.upper` for now

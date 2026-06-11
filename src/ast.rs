@@ -5,7 +5,7 @@ use crate::diag::Span;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AccessConvention {
-    /// Default: shared read borrow (`&T` in Rust).
+    /// Default: shared read borrow (`&T` in Rust; scalars pass by value).
     Read,
     /// Mutable borrow (`&mut T`).
     Mutate,
@@ -22,6 +22,38 @@ pub enum Type {
     List(Box<Type>),
     Shared(Box<Type>),
     Named(String),
+}
+
+impl Type {
+    /// Plain-words name for diagnostics (docs/04 voice: name both types).
+    pub fn show(&self) -> String {
+        match self {
+            Type::Int => "Int (a whole number)".to_string(),
+            Type::Float => "Float (a decimal number)".to_string(),
+            Type::Bool => "Bool (true or false)".to_string(),
+            Type::String => "String (text)".to_string(),
+            Type::List(inner) => format!("List[{}]", inner.name()),
+            Type::Shared(inner) => format!("Shared[{}]", inner.name()),
+            Type::Named(n) => format!("`{}`", n),
+        }
+    }
+
+    /// Bare type name, no gloss.
+    pub fn name(&self) -> String {
+        match self {
+            Type::Int => "Int".to_string(),
+            Type::Float => "Float".to_string(),
+            Type::Bool => "Bool".to_string(),
+            Type::String => "String".to_string(),
+            Type::List(inner) => format!("List[{}]", inner.name()),
+            Type::Shared(inner) => format!("Shared[{}]", inner.name()),
+            Type::Named(n) => n.clone(),
+        }
+    }
+
+    pub fn is_scalar(&self) -> bool {
+        matches!(self, Type::Int | Type::Float | Type::Bool)
+    }
 }
 
 #[derive(Debug)]
@@ -89,11 +121,72 @@ pub struct ConstDef {
     pub rust_kind: RustConstKind,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RustConstKind {
+    Const,
+    Static,
+}
+
+/// One `if`/`else if`/`else` chain.
+#[derive(Debug)]
+pub struct IfStmt {
+    pub cond: Expr,
+    pub then_body: Vec<Stmt>,
+    pub else_branch: Option<ElseBranch>,
+    pub span: Span,
+}
+
+#[derive(Debug)]
+pub enum ElseBranch {
+    ElseIf(Box<IfStmt>),
+    Else(Vec<Stmt>),
+}
+
+/// One `switch` arm: a condition and a body (S24).
+#[derive(Debug)]
+pub struct SwitchArm {
+    pub cond: Expr,
+    pub body: Vec<Stmt>,
+    pub span: Span,
+}
+
 #[derive(Debug)]
 pub enum Stmt {
-    Call(Call),
+    /// A call used for its effect, e.g. `print(x);`.
+    Expr(Expr),
     Val(Binding),
-    Return(Expr, Span),
+    /// `name = e;` (op None) or `name += e;` etc. (op Some, S17).
+    Assign {
+        name: String,
+        name_span: Span,
+        op: Option<BinOp>,
+        op_span: Span,
+        value: Expr,
+    },
+    Return(Option<Expr>, Span),
+    If(IfStmt),
+    While {
+        cond: Expr,
+        body: Vec<Stmt>,
+        span: Span,
+    },
+    /// `for i in a..b` — inclusive on both ends (S22).
+    For {
+        var: String,
+        var_span: Span,
+        start: Expr,
+        end: Expr,
+        body: Vec<Stmt>,
+        span: Span,
+    },
+    Switch {
+        subject: Expr,
+        arms: Vec<SwitchArm>,
+        else_body: Vec<Stmt>,
+        span: Span,
+    },
+    Break(Span),
+    Continue(Span),
     Loop(Vec<Stmt>, Span),
     Unsafe(Vec<Stmt>, Span),
 }
@@ -104,23 +197,24 @@ pub struct Binding {
     pub name: String,
     pub name_span: Span,
     pub ty: Option<Type>,
+    pub ty_span: Option<Span>,
     pub init: Expr,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Call {
     pub name: String,
     pub name_span: Span,
     pub args: Vec<CallArg>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct CallArgFlags {
     pub implicit_clone: bool,
     pub shared_auto_clone: bool,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CallArg {
     pub convention: AccessConvention,
     pub expr: Expr,
@@ -129,16 +223,102 @@ pub struct CallArg {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RustConstKind {
-    Const,
-    Static,
+pub enum BinOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Rem,
+    BitAnd,
+    BitOr,
+    BitXor,
+    Shl,
+    Shr,
+    Eq,
+    Ne,
+    Lt,
+    Gt,
+    Le,
+    Ge,
+    And,
+    Or,
+}
+
+impl BinOp {
+    pub fn is_comparison(self) -> bool {
+        matches!(
+            self,
+            BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge
+        )
+    }
+
+    /// The user-typed spelling (for diagnostics and codegen).
+    pub fn spell(self) -> &'static str {
+        match self {
+            BinOp::Add => "+",
+            BinOp::Sub => "-",
+            BinOp::Mul => "*",
+            BinOp::Div => "/",
+            BinOp::Rem => "%",
+            BinOp::BitAnd => "&",
+            BinOp::BitOr => "|",
+            BinOp::BitXor => "^",
+            BinOp::Shl => "<<",
+            BinOp::Shr => ">>",
+            BinOp::Eq => "==",
+            BinOp::Ne => "!=",
+            BinOp::Lt => "<",
+            BinOp::Gt => ">",
+            BinOp::Le => "<=",
+            BinOp::Ge => ">=",
+            BinOp::And => "&&",
+            BinOp::Or => "||",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnOp {
+    Neg,
+    Not,
+}
+
+/// One piece of a string literal (S8): literal text or an interpolated
+/// expression.
+#[derive(Debug, Clone)]
+pub enum StrPart {
+    Lit(String),
+    Interp(Expr),
 }
 
 #[derive(Debug, Clone)]
 pub enum Expr {
-    Str(String),
-    Int(i64),
+    /// String literal, possibly with interpolation parts.
+    Str(Vec<StrPart>, Span),
+    Int(i64, Span),
+    Float(f64, Span),
+    Bool(bool, Span),
     Ident(String, Span),
+    Call(Call),
+    Unary(UnOp, Box<Expr>, Span),
+    Binary(BinOp, Box<Expr>, Box<Expr>, Span),
     Deref(Box<Expr>, Span),
     Member(Box<Expr>, String, Span),
+}
+
+impl Expr {
+    pub fn span(&self) -> Span {
+        match self {
+            Expr::Str(_, s)
+            | Expr::Int(_, s)
+            | Expr::Float(_, s)
+            | Expr::Bool(_, s)
+            | Expr::Ident(_, s)
+            | Expr::Unary(_, _, s)
+            | Expr::Binary(_, _, _, s)
+            | Expr::Deref(_, s)
+            | Expr::Member(_, _, s) => *s,
+            Expr::Call(c) => c.name_span,
+        }
+    }
 }

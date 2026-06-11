@@ -4,27 +4,30 @@ Each milestone is done when its exit criteria pass as tests. Examples are
 the executable spec: a milestone ships with new examples/ programs and new
 tests/ui fixtures, all green.
 
-## M0 — Walking skeleton  *(code written; needs first verification run)*
+## M0 — Walking skeleton  *(done; verified 2026-06-11)*
 
 Hello world end-to-end: lex → parse → sema → emit Rust → rustc → run.
 Diagnostics framework, ui snapshot harness, golden harness, ICE policy.
-**Exit:** `cargo test` green; `lex run examples/01_hello.lex` prints.
+**Exit:** `cargo test` green; `lex run examples/01_hello.lex` prints. ✓
 
-## M1 — Values and expressions
+## M1 — Values and expressions  *(done; verified 2026-06-11)*
 
 Bindings (S2: `val`/`var`), Int/Float/Bool/String (S11), arithmetic + comparison,
 compound assignment (S17: `+=` `-=` `*=` `/=` `%=` `&=` `|=` `^=` `<<=`
 `>>=`),
-string interpolation (S8), escape sequences, multi-argument calls,
-`if`/`else`, local type inference (annotations optional, S4).
+string interpolation (S8), escape sequences + `{{`/`}}` literal braces (S20),
+multi-argument calls, `if`/`else`, `while` + `for i in <range>` loops
+(S19; inclusive ranges S22; `break`/`continue` S23), `switch` with
+condition arms (S24), Float display rule (S21),
+local type inference (annotations optional, S4).
 Compiler work: error recovery (multiple parse errors per run),
 unicode-aware caret columns, E0005 retires. Teaching errors for familiar
 foreign spellings (S14): recognize `and`/`or`/`not`, `try`, `let`/`let mut`,
-`func`/`def`, `println`, `set`, `Text`, `use` and point to the canonical Lex form
-(E0008+). No
-autocorrect yet — that's M6/LSP.
-**Exit:** examples 03–06 (fizzbuzz-class programs) run; ui suite covers
-every new error; type errors name both types in plain words.
+`func`/`def`, `println`, `set`, `Text`, `use`, `match` and point to the
+canonical Lex form (E0008–E0016). Comparison distribution in `&&`/`||`
+chains (S25). No autocorrect yet — that's M6/LSP.
+**Exit:** examples 03–07 (fizzbuzz-class programs + switch) run; ui suite
+covers every new error; type errors name both types in plain words. ✓
 
 ## M2 — Ownership v1  ★ the crown jewel
 
@@ -85,6 +88,12 @@ importing Rust's type system.
 
 ## Deferred indefinitely (owner can promote)
 
-Async, user macros, traits/generics (the traits-vs-comptime decision is
-deliberately postponed until M5 data exists to motivate it), threads &
-channels, package manager, self-hosting, debugger source maps.
+Async, user macros, traits/generics, threads & channels, package manager,
+self-hosting, debugger source maps.
+
+**Comptime (Zig-style compile-time execution)** — deferred to Tier 2,
+post-M5. Revisit once structs, collections, and real programs show
+whether we need generics at all, and if so whether Lex should specialize
+via a `comptime` interpreter in sema (not rustc `const fn`). See
+docs/02-syntax-decisions.md **S26** for the placeholder. Owner can
+promote when motivated; no implementation until then.

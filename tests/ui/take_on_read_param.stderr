@@ -1,7 +1,7 @@
-error[E0203]: `take` passed to a parameter that does not consume
+Error [E0203]: `take` passed to a parameter that does not consume
   --> tests/ui/take_on_read_param.lex:7:16
     |
   7 |     greet(take msg);
     |                ^^^
- why: only `take` parameters accept a moved value at the call site
- fix: remove `take` or change the parameter to `take`
+ Why: only `take` parameters accept a moved value at the call site
+ Fix: remove `take` or change the parameter to `take`

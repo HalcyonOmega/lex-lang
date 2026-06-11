@@ -15,22 +15,29 @@ Every diagnostic has four parts:
 
 ## Exact render format (pinned by snapshots)
 
+Sentence capitalization throughout — `Error` / `Why:` / `Fix:` (owner,
+2026-06-11). M0 snapshots using the old lowercase form are re-blessed as
+part of M1.
+
 ```
-error[E0102]: nothing named `pirnt` exists here
+Error [E0102]: nothing named `pirnt` exists here
   --> tests/ui/unknown_function.lex:2:5
     |
   2 |     pirnt("hi")
     |     ^^^^^
- why: only functions that have been defined (or built in, like `print`) can be called
- fix: did you mean `print`?
+ Why: only functions that have been defined (or built in, like `print`) can be called
+ Fix: did you mean `print`?
 ```
 
 Diagnostics without a span (e.g. E0101) omit the location/source block.
-Multiple diagnostics are separated by one blank line. sema reports all
-problems at once; lexer/parser are fail-fast until M1 error recovery.
+Multiple diagnostics are separated by one blank line. Every stage reports
+all the problems it can in one run (M1 error recovery): the lexer skips
+past bad characters, the parser re-syncs at statement boundaries, and
+sema checks every function. Caret columns are display-width aware, so
+underlines line up under wide characters and emoji.
 
-Lint warnings use the same shape with `warning[L02xx]:` instead of
-`error[E02xx]:`. Lints do not block compilation; the driver prints them
+Lint warnings use the same shape with `Warning [L02xx]:` instead of
+`Error [E02xx]:`. Lints do not block compilation; the driver prints them
 before continuing.
 
 ## Voice rules
@@ -42,7 +49,11 @@ before continuing.
 - Ownership errors (M2) use the human framing: *while something is being
   changed, nobody else may be looking at it.*
 - Staged features name their milestone and give today's workaround
-  (see E0004/E0005). A future feature must never die as a generic error.
+  (see E0006/E0117). A future feature must never die as a generic error.
+- Teaching errors (S14, E0008–E0016) recognize a familiar foreign
+  spelling, name the one Lex form, and then keep going as if the canonical
+  form had been written — one foreign word never hides the rest of the
+  file's problems.
 - Typos get suggestions (edit distance ≤ 2): "did you mean `print`?"
 - Fixes are imperative and specific: "add a closing `\"`", never
   "consider revising".
@@ -51,23 +62,48 @@ before continuing.
 
 | Code  | Stage | Meaning                                  |
 |-------|-------|------------------------------------------|
-| E0001 | lex   | character means nothing here              |
-| E0002 | lex   | unterminated text literal                 |
+| E0001 | lex   | character/escape/lone brace means nothing here |
+| E0002 | lex   | unterminated text literal or interpolation |
 | E0003 | parse | expected X, found Y                       |
-| E0004 | parse | staged: parameters arrive in M2           |
-| E0005 | parse | staged: variables arrive in M1            |
-| E0006 | parse | *reserved*                                |
+| E0004 | parse | *retired in M1* (was: parameters staged)  |
+| E0005 | parse | *retired in M1* (was: variables staged)   |
+| E0006 | parse | staged: `?` (errors as values) arrives in M4 |
 | E0007 | lex   | integer too large for 64 bits             |
+| E0008 | parse | teaching: `def`/`func` → `fn` (S14)       |
+| E0009 | parse | teaching: `let`/`let mut` → `val`/`var`   |
+| E0010 | parse | teaching: `set` → `val`                   |
+| E0011 | sema  | teaching: `println` → `print`             |
+| E0012 | parse | teaching: `and`/`or`/`not` → `&&`/`\|\|`/`!` |
+| E0013 | parse | teaching: `Text` → `String`               |
+| E0014 | parse | teaching: `try` → `?` (M4)                |
+| E0015 | parse | teaching: `use` → `import` (M6)           |
+| E0016 | parse | teaching: `match` → `switch` (S24)        |
 | E0101 | sema  | no `main` function                        |
 | E0102 | sema  | unknown function (with suggestion)        |
 | E0103 | sema  | `print` arity                             |
-| E0104 | sema  | user function called with arguments       |
-| E0105 | sema  | duplicate function definition             |
+| E0104 | sema  | wrong number of arguments                 |
+| E0105 | sema  | duplicate definition                      |
 | E0106 | sema  | redefining a built-in                     |
+| E0107 | sema  | unknown name (with suggestion)            |
+| E0108 | sema  | binding type doesn't match its value      |
+| E0109 | sema  | operator type mismatch (incl. Int/Float mixing, `+` on text) |
+| E0110 | sema  | condition isn't `Bool` (`if`/`while`/arm/logic operand) |
+| E0111 | sema  | changing a `val`, const, or read-only parameter |
+| E0112 | sema  | value doesn't fit where it's used (argument/print/interpolation) |
+| E0113 | sema  | `return` value mismatch (wrong/missing/unexpected) |
+| E0114 | sema  | a path reaches the end without `return`   |
+| E0115 | sema  | `break`/`continue` outside a loop         |
+| E0116 | sema  | valueless call used as a value            |
+| E0117 | sema  | staged: fields/methods arrive in M3 (only `.clone()`) |
+| E0118 | sema  | name already taken (no shadowing)         |
+| E0119 | sema  | unknown type name                         |
+| E0120 | sema  | moving/returning a borrowed parameter     |
+| E0121 | sema  | value used after it was given away        |
+| E0122 | sema  | `main` with parameters or a return type   |
 | E0201 | sema  | `take` required; value can't be copied    |
 | E0202 | sema  | `mut` required at call site               |
 | E0203 | sema  | `take` on a non-consuming parameter       |
-| E0206 | sema  | `view` on invalid return type             |
+| E0206 | sema  | *reserved for M2*: `view` on invalid return type |
 | E0207 | sema  | multiple unlabeled `ref` fields           |
 | E0208 | sema  | `*` outside `unsafe`                      |
 | L0201 | sema  | implicit `.clone()` at call site (lint)   |

@@ -3,7 +3,7 @@ fn greet() {
     print("hi there");
 }
 
-pub fn main() {
+fn main() {
     greet();
     print(42);
     greet();

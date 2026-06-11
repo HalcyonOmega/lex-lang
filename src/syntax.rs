@@ -88,6 +88,49 @@ pub const TYPE_LIST: &str = "List";
 /// M2: shared handle type (Arc equivalent); auto-cloned across boundaries.
 pub const TYPE_SHARED: &str = "Shared";
 
+/// M1 (docs/05, owner-blessed examples 2026-06-11): branching keywords.
+pub const KW_IF: &str = "if";
+pub const KW_ELSE: &str = "else";
+
+/// S19 (ratified): loop keywords.
+pub const KW_WHILE: &str = "while";
+pub const KW_FOR: &str = "for";
+pub const KW_IN: &str = "in";
+
+/// S22 (ratified): inclusive range between two `Int` ends — `1..10`.
+pub const OP_RANGE: &str = "..";
+
+/// S23 (ratified): loop control.
+pub const KW_BREAK: &str = "break";
+pub const KW_CONTINUE: &str = "continue";
+
+/// S24 (ratified): many-way choice with condition arms.
+pub const KW_SWITCH: &str = "switch";
+
+/// S24 (ratified): arm arrow inside `switch` (same spelling as return types).
+pub const OP_ARM_ARROW: &str = "->";
+
+/// S11 (ratified): the two `Bool` literals.
+pub const LIT_TRUE: &str = "true";
+pub const LIT_FALSE: &str = "false";
+
+/// M1 (docs/05): arithmetic operators. `+ - * /` on Int and Float;
+/// `% & | ^ << >>` on Int only. No `+` on String (S8: interpolate instead).
+pub const OP_PLUS: &str = "+";
+pub const OP_MINUS: &str = "-";
+pub const OP_STAR: &str = "*";
+pub const OP_SLASH: &str = "/";
+pub const OP_PERCENT: &str = "%";
+pub const OP_AMP: &str = "&";
+pub const OP_PIPE: &str = "|";
+pub const OP_CARET: &str = "^";
+pub const OP_SHL: &str = "<<";
+pub const OP_SHR: &str = ">>";
+
+/// S20 (ratified): escape sequences inside quoted text, and `{{` `}}` for
+/// literal braces.
+pub const ESCAPES: &[(char, char)] = &[('n', '\n'), ('t', '\t'), ('"', '"'), ('\\', '\\')];
+
 /// S13 (provisional): logical operators.
 pub const OP_AND: &str = "&&";
 pub const OP_OR: &str = "||";
@@ -132,6 +175,9 @@ pub const FOREIGN_DEF: &str = "def";
 pub const FOREIGN_USE: &str = "use";
 pub const FOREIGN_PRINTLN: &str = "println";
 pub const FOREIGN_TEXT: &str = "Text";
+
+/// S24: `match` recognized only for a teaching error naming `switch`.
+pub const FOREIGN_MATCH: &str = "match";
 
 /// S10 (ratified M2): foreign read/write forms for teaching errors.
 pub const FOREIGN_READ: &str = "read";
