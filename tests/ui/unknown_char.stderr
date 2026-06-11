@@ -1,5 +1,5 @@
 Error [E0001]: the character `$` doesn't mean anything here (yet)
-  --> tests/ui/unknown_char.lex:2:13
+  --> tests/ui/unknown_char.jet:2:13
     |
   2 |     val x = $1;
     |             ^

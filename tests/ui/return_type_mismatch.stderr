@@ -1,5 +1,5 @@
 Error [E0113]: `answer` promises to return Int (a whole number), but this returns String (text)
-  --> tests/ui/return_type_mismatch.lex:2:12
+  --> tests/ui/return_type_mismatch.jet:2:12
     |
   2 |     return "forty-two";
     |            ^^^^^^^^^^^

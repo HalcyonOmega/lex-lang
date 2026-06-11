@@ -1,5 +1,5 @@
 Error [E0003]: expected `:` after the parameter `name`
-  --> tests/ui/params_not_yet.lex:1:10
+  --> tests/ui/params_not_yet.jet:1:10
     |
   1 | fn greet(name) {
     |          ^^^^

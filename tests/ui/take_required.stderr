@@ -1,5 +1,5 @@
 Error [E0201]: `consume` needs `take` here — this value can't be copied
-  --> tests/ui/take_required.lex:11:13
+  --> tests/ui/take_required.jet:11:13
     |
  11 |     consume(n);
     |             ^

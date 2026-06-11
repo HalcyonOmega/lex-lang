@@ -3,10 +3,10 @@
 ## Pipeline
 
 ```
- Lex source (.lex)
+ Jet source (.jet)
         │
         ▼
-   lexer.rs ──► tokens (every token has a byte Span)
+   jeter.rs ──► tokens (every token has a byte Span)
         │
         ▼
   parser.rs ──► AST                     ┐
@@ -28,7 +28,7 @@
 |----------------|--------------------------------------|-----------------------|
 | src/syntax.rs  | every user-typeable keyword/sigil    | no                    |
 | src/diag.rs    | Span, Diagnostic, rendering          | renders them          |
-| src/lexer.rs   | text → tokens                        | yes (E00xx)           |
+| src/jeter.rs   | text → tokens                        | yes (E00xx)           |
 | src/parser.rs  | tokens → AST, fail-fast              | yes (E00xx)           |
 | src/sema.rs    | all semantic checks, collects all    | yes (E01xx, M2: E02xx)|
 | src/codegen.rs | AST → Rust text                      | **never**             |
@@ -63,8 +63,8 @@
   std-backed runtime — we do NOT pursue `no_std` in v1 (it would remove
   the conveniences priority #2 depends on). A size-minimal profile
   (`opt-level="z"`, possibly `panic=abort`) is decision S15, exposed
-  later as `lex build --small`; the default leans toward speed.
-- **R9 — A file is a complete program.** `lex run foo.lex` compiles and
+  later as `jet build --small`; the default leans toward speed.
+- **R9 — A file is a complete program.** `jet run foo.jet` compiles and
   runs a single file with no manifest, no project folder, no config.
   The compiler invokes `rustc` on one generated `.rs` file — it never
   creates or requires a Cargo project for user code. Agents must not add

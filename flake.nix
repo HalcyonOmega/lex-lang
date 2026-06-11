@@ -1,5 +1,5 @@
 {
-  description = "Lex — beginner-first, memory-safe compiled language";
+  description = "Jet — beginner-first, memory-safe compiled language";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -16,38 +16,38 @@
       system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
-        lex = pkgs.rustPlatform.buildRustPackage {
-          pname = "lex";
+        jet = pkgs.rustPlatform.buildRustPackage {
+          pname = "jet";
           version = "0.1.0";
           src = ./.;
           cargoLock.lockFile = ./Cargo.lock;
 
-          # lex invokes rustc at runtime to compile generated code.
+          # jet invokes rustc at runtime to compile generated code.
           nativeBuildInputs = [ pkgs.makeWrapper ];
           buildInputs = [ pkgs.rustc ];
 
           doCheck = true;
 
           postInstall = ''
-            wrapProgram $out/bin/lex \
+            wrapProgram $out/bin/jet \
               --prefix PATH : "${pkgs.lib.makeBinPath [ pkgs.rustc pkgs.stdenv.cc ]}"
           '';
 
           meta = with pkgs.lib; {
-            description = "Compiler for the Lex programming language";
-            homepage = "https://github.com/HalcyonOmega/lex-lang";
-            mainProgram = "lex";
+            description = "Compiler for the Jet programming language";
+            homepage = "https://github.com/HalcyonOmega/jet-lang";
+            mainProgram = "jet";
             platforms = platforms.unix;
           };
         };
       in
       {
-        packages.default = lex;
-        packages.lex = lex;
+        packages.default = jet;
+        packages.jet = jet;
 
         apps.default = {
           type = "app";
-          program = "${lex}/bin/lex";
+          program = "${jet}/bin/jet";
         };
 
         devShells.default = pkgs.mkShell {
@@ -55,10 +55,10 @@
             cargo
             rustc
             gcc
-            lex
+            jet
           ];
           shellHook = ''
-            echo "Lex dev shell — rustc on PATH for \`lex run\`"
+            echo "Jet dev shell — rustc on PATH for \`jet run\`"
           '';
         };
 

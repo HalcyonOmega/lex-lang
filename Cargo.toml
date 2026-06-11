@@ -1,5 +1,5 @@
 [package]
-name = "lex"
+name = "jet"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,9 +7,9 @@ edition = "2021"
 # until the owner approves one. std only.
 
 [lib]
-name = "lex"
+name = "jet"
 path = "src/lib.rs"
 
 [[bin]]
-name = "lex"
+name = "jet"
 path = "src/main.rs"

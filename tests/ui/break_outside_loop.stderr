@@ -1,5 +1,5 @@
 Error [E0115]: `break` only works inside a loop
-  --> tests/ui/break_outside_loop.lex:2:5
+  --> tests/ui/break_outside_loop.jet:2:5
     |
   2 |     break;
     |     ^^^^^

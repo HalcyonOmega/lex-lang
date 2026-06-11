@@ -1,5 +1,5 @@
 Warning [L0201]: implicit clone of `msg`; write `take msg` to transfer ownership or `.clone()` to silence this warning
-  --> tests/ui_lint/implicit_clone.lex:7:13
+  --> tests/ui_lint/implicit_clone.jet:7:13
     |
   7 |     consume(msg);
     |             ^^^

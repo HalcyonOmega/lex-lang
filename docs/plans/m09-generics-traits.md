@@ -9,14 +9,14 @@ via S26 row). Depends on M8 (function values inform inference work).
 ## Goal
 
 User-written generic functions/types and traits (named capabilities) —
-the feature that makes Lex viable for real library code and Rust
+the feature that makes Jet viable for real library code and Rust
 rewrites. Monomorphized like Rust, so zero runtime cost. Scope is
 deliberately tight: single-param-style simplicity, no associated types,
 no default methods in v1 of traits.
 
 ## Surface (uses ballot recommendations — substitute ratified choices)
 
-```lex
+```jet
 trait Shape {
     fn area(self) -> Float;
     fn name(self) -> String;
@@ -96,7 +96,7 @@ fn main() {
    internal Clonable rule (auto-bound inferred when the body needs a
    clone: sema adds the requirement and reports it in E0905 text).
 6. Monomorphization happens conceptually in sema (instantiation table so
-   errors point at Lex source with the concrete types named), but
+   errors point at Jet source with the concrete types named), but
    codegen emits real Rust generics and lets rustc monomorphize — sema
    must therefore prove every instantiation valid itself (R2; never
    lean on rustc).
@@ -105,7 +105,7 @@ fn main() {
 
 ## Codegen lowering
 
-| Lex                      | Rust                                        |
+| Jet                      | Rust                                        |
 |--------------------------|---------------------------------------------|
 | `fn f[T: Shape](x: T)`   | `fn user_f<T: user_Shape>(x: &T)`           |
 | `trait Shape { … }`      | `trait user_Shape { … }`                    |
@@ -127,9 +127,9 @@ bounds; E0036 `dyn`/`Box` → just write the trait name.
 
 ## Examples & tests
 
-- `examples/21_traits.lex` — shapes (the canonical demo), mixed
+- `examples/21_traits.jet` — shapes (the canonical demo), mixed
   `List[Shape]`, plus a generic `largest` over `Comparable`.
-- `examples/22_generic_types.lex` — `Pair[T]`, a generic `Stack[T]`
+- `examples/22_generic_types.jet` — `Pair[T]`, a generic `Stack[T]`
   struct wrapping `List[T]`.
 - ui fixtures for every E09xx; inference-failure fixtures with the
   annotation fix shown; golden tests including dyn-dispatch output and

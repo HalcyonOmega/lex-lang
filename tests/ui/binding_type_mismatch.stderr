@@ -1,5 +1,5 @@
 Error [E0108]: `n` says it holds Int (a whole number), but the value is String (text)
-  --> tests/ui/binding_type_mismatch.lex:2:18
+  --> tests/ui/binding_type_mismatch.jet:2:18
     |
   2 |     val n: Int = "hi";
     |                  ^^^^

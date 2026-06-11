@@ -1,5 +1,5 @@
-Error [E0009]: Lex does not use `let`
-  --> tests/ui/foreign_let.lex:2:5
+Error [E0009]: Jet does not use `let`
+  --> tests/ui/foreign_let.jet:2:5
     |
   2 |     let count = 1;
     |     ^^^

@@ -13,16 +13,16 @@ a milestone may not start until its ballot group is ratified in docs/02.
 **Owner direction (2026-06-11):** the v1.x horizon is a complete
 language — data types, errors, collections, closures, generics/traits,
 std library, concurrency, package manager, real LSP — good enough that
-experts rewriting small Rust/Go/C tools would *choose* Lex. Formerly
+experts rewriting small Rust/Go/C tools would *choose* Jet. Formerly
 "deferred indefinitely" items (generics, threads & channels, package
 manager) are hereby promoted onto the roadmap below. Philosophy ranks
-are unchanged; single-file `lex run` stays ceremony-free forever (R9).
+are unchanged; single-file `jet run` stays ceremony-free forever (R9).
 
 ## M0 — Walking skeleton  *(done; verified 2026-06-11)*
 
-Hello world end-to-end: lex → parse → sema → emit Rust → rustc → run.
+Hello world end-to-end: jet → parse → sema → emit Rust → rustc → run.
 Diagnostics framework, ui snapshot harness, golden harness, ICE policy.
-**Exit:** `cargo test` green; `lex run examples/01_hello.lex` prints. ✓
+**Exit:** `cargo test` green; `jet run examples/01_hello.jet` prints. ✓
 
 ## M1 — Values and expressions  *(done; verified 2026-06-11)*
 
@@ -38,7 +38,7 @@ Compiler work: error recovery (multiple parse errors per run),
 unicode-aware caret columns, E0005 retires. Teaching errors for familiar
 foreign spellings (S14): recognize `and`/`or`/`not`, `try`, `let`/`let mut`,
 `func`/`def`, `println`, `set`, `Text`, `use`, `match` and point to the
-canonical Lex form (E0008–E0016). Comparison distribution in `&&`/`||`
+canonical Jet form (E0008–E0016). Comparison distribution in `&&`/`||`
 chains (S25). No autocorrect yet — that's M6/LSP.
 **Exit:** examples 03–07 (fizzbuzz-class programs + switch) run; ui suite
 covers every new error; type errors name both types in plain words. ✓
@@ -51,7 +51,7 @@ in sema, E02xx diagnostics written to docs/04 voice rules. Teaching errors
 for foreign `read`/`write` (E0017/E0018). References cannot be stored or
 returned in tier 1 — therefore no lifetime syntax exists.
 **Exit:** an example that *fails* ownership exists for every E02xx code,
-each with a `.fixed.lex` companion that compiles (`tests/ui_fixes.rs`);
+each with a `.fixed.jet` companion that compiles (`tests/ui_fixes.rs`);
 lint snapshots in `tests/ui_lint/`; golden tests prove rustc never rejects
 what sema passes (the verifier earning its keep). ✓
 
@@ -86,14 +86,14 @@ mistakes produce great errors, not Rust concepts.
 
 ## M6 — Tooling I  *(plan: docs/plans/m06-tooling.md; ballots: Group 5; four phases)*
 
-`lex fmt` (one true style, zero config), `lex test` (`test "name" { }`
-blocks), `lex new`. Multi-file imports (S16: `import "path" as alias;`)
-and cross-file visibility enforcement (S18). A `lex build --small`
+`jet fmt` (one true style, zero config), `jet test` (`test "name" { }`
+blocks), `jet new`. Multi-file imports (S16: `import "path" as alias;`)
+and cross-file visibility enforcement (S18). A `jet build --small`
 profile (S15). LSP **v0**: diagnostics + S14 autocorrect quick-fixes +
 formatting, with a minimal VS Code extension. Single binary, no config
 files (philosophy: minimal configuration).
 **Exit:** fmt is idempotent on all examples; autocorrect turns a pasted
-C-style snippet into canonical Lex; `--small` produces a measurably
+C-style snippet into canonical Jet; `--small` produces a measurably
 smaller binary than the default; a new project runs in two commands.
 
 ## M7 — Rust FFI (interop tier)  *(plan: docs/plans/m07-ffi.md; ballots: Group 5)*
@@ -140,8 +140,8 @@ framing and fixed with channels.
 
 ## M12 — Package manager  *(plan: docs/plans/m12-packages.md; ballots: Group 7; two phases)*
 
-Opt-in `lex.toml` (path + git deps, exact pins), `lex add`/`lex fetch`,
-content-hashed `lex.lock`, FFI deps in the manifest, no install-time
+Opt-in `jet.toml` (path + git deps, exact pins), `jet add`/`jet fetch`,
+content-hashed `jet.lock`, FFI deps in the manifest, no install-time
 code execution. Phase 2: static-index registry. Single files never need
 any of it (R9).
 **Exit:** fixture workspaces covering resolution, locking, conflicts,

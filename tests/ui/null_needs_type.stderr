@@ -1,5 +1,5 @@
 Error [E0308]: bare `null` needs a known optional type here
-  --> tests/ui/null_needs_type.lex:2:13
+  --> tests/ui/null_needs_type.jet:2:13
     |
   2 |     val x = null;
     |             ^^^^

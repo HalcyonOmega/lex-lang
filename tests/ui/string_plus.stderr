@@ -1,5 +1,5 @@
 Error [E0109]: text isn't joined with `+`
-  --> tests/ui/string_plus.lex:4:16
+  --> tests/ui/string_plus.jet:4:16
     |
   4 |     val full = first + last;
     |                ^^^^^^^^^^^^

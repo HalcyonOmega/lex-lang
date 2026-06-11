@@ -1,5 +1,5 @@
 Error [E0302]: `Point` has no field `y`
-  --> tests/ui/struct_unknown_field.lex:7:13
+  --> tests/ui/struct_unknown_field.jet:7:13
     |
   7 |     print(p.y);
     |             ^

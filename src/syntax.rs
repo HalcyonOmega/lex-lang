@@ -9,13 +9,13 @@
 //! owner in docs/02-syntax-decisions.md.
 
 /// N1 (ratified): language name.
-pub const LANG_NAME: &str = "Lex";
+pub const LANG_NAME: &str = "Jet";
 
 /// N1 (ratified): compiler binary name.
-pub const BINARY_NAME: &str = "lex";
+pub const BINARY_NAME: &str = "jet";
 
 /// N2 (ratified): source file extension (without the dot).
-pub const FILE_EXT: &str = "lex";
+pub const FILE_EXT: &str = "jet";
 
 /// S1 (ratified): keyword that starts a function definition.
 pub const KW_FN: &str = "fn";

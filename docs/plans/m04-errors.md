@@ -15,7 +15,7 @@ exists for bugs only.
 
 ## Surface (uses ballot recommendations — substitute ratified choices)
 
-```lex
+```jet
 enum ParseError {
     Empty;
     BadDigit(text: String);
@@ -70,7 +70,7 @@ pattern += "ok" "(" ident ")" | "err" "(" ident ")" ;
 ```
 
 `or` the type operator and `or` the fallback operator are distinguished
-by position (type vs expression context); the lexer keeps one token.
+by position (type vs expression context); the jeter keeps one token.
 Precedence: `e or f` binds looser than `&&`/`||` so `a? or b` and
 `x == 1 || y or 0` parse predictably; document in docs/01.
 
@@ -103,24 +103,24 @@ Precedence: `e or f` binds looser than `&&`/`||` so `a? or b` and
 
 ## Codegen lowering
 
-| Lex                    | Rust                                              |
+| Jet                    | Rust                                              |
 |------------------------|---------------------------------------------------|
 | `T or E`               | `Result<T, E>`                                    |
 | `ok(v)` / `err(e)`     | `Ok(v)` / `Err(e)`                                |
 | `e?`                   | `e?` (types align by construction)                |
 | `v or fallback`        | `match v { Ok(x) => x, Err(_) => fallback }` (and Option equivalent) |
 | `v or return [e]`      | `match v { Ok(x) => x, Err(_) => return [e] }`    |
-| `panic("m {x}")`       | `lex_panic(file, line, format!(…))` runtime helper |
-| `assert(c, "m")`       | `if !(c) { lex_panic(…) }`                        |
+| `panic("m {x}")`       | `jet_panic(file, line, format!(…))` runtime helper |
+| `assert(c, "m")`       | `if !(c) { jet_panic(…) }`                        |
 
 Runtime report format (pinned by a golden test capturing stderr):
 
 ```
 The program stopped: <message>
-  --> file.lex:12
+  --> file.jet:12
 ```
 
-Codegen embeds the Lex file/line of each `panic`/`assert` as string/int
+Codegen embeds the Jet file/line of each `panic`/`assert` as string/int
 constants (no source maps needed). The helper prints to stderr and exits
 with code 70. Rust panics from generated code remain ICEs (R5) — the
 helper never uses `panic!`.
@@ -137,11 +137,11 @@ now-real feature.
 
 ## Examples & tests
 
-- `examples/13_errors.lex` — parse a config-like string; happy path uses
+- `examples/13_errors.jet` — parse a config-like string; happy path uses
   `?` and stays clean; one `or` default; one full `switch`.
-- `examples/14_panic.lex` — assert + panic output (golden test pins the
+- `examples/14_panic.jet` — assert + panic output (golden test pins the
   runtime report and exit code 70).
-- ui fixtures: every E04xx + the three teaching errors + `.fixed.lex`
+- ui fixtures: every E04xx + the three teaching errors + `.fixed.jet`
   companions. A fixture proving `?` in `main` errors cleanly.
 - Golden: rustc accepts all of it; an example where the error enum has
   payloads and prints via M3's derived Display.

@@ -1,5 +1,5 @@
 Error [E0023]: `switch` arms are written `condition -> { ... };`, not `case`
-  --> tests/ui/foreign_switch_case.lex:3:9
+  --> tests/ui/foreign_switch_case.jet:3:9
     |
   3 |         case 1 -> { print("x"); };
     |         ^^^^

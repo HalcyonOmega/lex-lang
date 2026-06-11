@@ -1,6 +1,6 @@
 //! M2 exit criterion: every ownership ui fixture's Fix compiles.
 //!
-//! Each failing tests/ui/NAME.lex may have a sibling NAME.fixed.lex that
+//! Each failing tests/ui/NAME.jet may have a sibling NAME.fixed.jet that
 //! applies the diagnostic's Fix line. Those companions must pass the front
 //! end; when rustc is available, generated Rust must build too (I2).
 
@@ -11,7 +11,7 @@ use std::process::Command;
 #[test]
 fn ownership_ui_fixes_compile() {
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/ui");
-    let ext = lex::syntax::FILE_EXT;
+    let ext = jet::syntax::FILE_EXT;
     let have_rustc = Command::new("rustc").arg("--version").output().is_ok();
 
     let mut entries: Vec<_> = fs::read_dir(&dir)
@@ -27,7 +27,7 @@ fn ownership_ui_fixes_compile() {
 
     assert!(
         entries.len() >= 10,
-        "expected M2 ownership .fixed.lex companions, found {}",
+        "expected M2 ownership .fixed.jet companions, found {}",
         entries.len()
     );
 
@@ -36,11 +36,11 @@ fn ownership_ui_fixes_compile() {
         let src = fs::read_to_string(&path).unwrap();
         let shown = format!("tests/ui/{}", name);
 
-        let out = lex::compile(&src).unwrap_or_else(|diags| {
+        let out = jet::compile(&src).unwrap_or_else(|diags| {
             panic!(
                 "fixed companion {} should compile:\n{}",
                 name,
-                lex::render_diagnostics(&shown, &src, &diags)
+                jet::render_diagnostics(&shown, &src, &diags)
             );
         });
 
@@ -52,8 +52,8 @@ fn ownership_ui_fixes_compile() {
         if have_rustc && !rustc_skip {
             let stem = stem_name.replace('.', "_");
             let tmp = std::env::temp_dir();
-            let rs = tmp.join(format!("lex_ui_fix_{}.rs", stem));
-            let bin = tmp.join(format!("lex_ui_fix_{}", stem));
+            let rs = tmp.join(format!("jet_ui_fix_{}.rs", stem));
+            let bin = tmp.join(format!("jet_ui_fix_{}", stem));
             fs::write(&rs, &out.rust).unwrap();
             let status = Command::new("rustc")
                 .args(["--edition", "2021", "-o"])

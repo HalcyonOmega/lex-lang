@@ -1,5 +1,5 @@
-Error [E0011]: Lex calls it `print`, not `println`
-  --> tests/ui/foreign_println.lex:2:5
+Error [E0011]: Jet calls it `print`, not `println`
+  --> tests/ui/foreign_println.jet:2:5
     |
   2 |     println("hi");
     |     ^^^^^^^

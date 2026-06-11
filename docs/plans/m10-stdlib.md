@@ -10,14 +10,14 @@ M5 (collections), M8 (closures), M9 (generics for signatures like
 
 Enough batteries to rewrite real CLI tools: files, stdin/args/env,
 process control, math, time, random, JSON. Implemented as compiler-known
-modules backed by Rust std in the generated prelude (no Lex-source
+modules backed by Rust std in the generated prelude (no Jet-source
 stdlib yet — that wants packages, M12). Every fallible operation returns
 `T or E` with a small set of well-named error enums; nothing panics
 except programmer errors.
 
 ## Surface (uses ballot recommendations — substitute ratified choices)
 
-```lex
+```jet
 import "std/fs" as fs;
 import "std/io" as io;
 import "std/json" as json;
@@ -76,7 +76,7 @@ Float` (0..1) · `pick[T](xs: List[T]) -> T?` · `shuffle[T](mut xs)` ·
 Text(s: String); Array(items: List[Json]); Object(entries: Map[String,
 Json]); }` · `parse(text) -> Json or JsonError` · `render(j) -> String`
 · `render_pretty(j) -> String`. Parser hand-written in the prelude
-(recursive descent, ~200 lines) — also the flagship proof that Lex's
+(recursive descent, ~200 lines) — also the flagship proof that Jet's
 own data types model real-world data. `JsonError { line, message }`.
 
 **Byte** (S42): new scalar type = u8; arithmetic like Int with range
@@ -91,7 +91,7 @@ checks at literals (E1003 "a Byte holds 0..255"); `b.to_int()`,
    user functions; did-you-mean works across a module's items (E1004).
 2. Naming lint (S54): identifiers should be snake_case; L1001 fires on
    camelCase/PascalCase names with the rename — warning, not error, and
-   `lex fmt` does NOT auto-rename (behavior changes are never silent).
+   `jet fmt` does NOT auto-rename (behavior changes are never silent).
 3. No global state: `std/random`'s default generator is a thread-local
    seeded from time; document determinism story honestly.
 4. All blocking calls (`input`, `sleep`, `run`) are fine in v1 (no async
@@ -100,7 +100,7 @@ checks at literals (E1003 "a Byte holds 0..255"); `b.to_int()`,
 ## Codegen
 
 Each module's functions become prelude helpers over Rust std
-(`std::fs::read_to_string` etc.), mapping errors into the Lex enums.
+(`std::fs::read_to_string` etc.), mapping errors into the Jet enums.
 JSON/PRNG are pure-Rust code in the prelude template. The prelude
 becomes a separate generated module; keep it under `src/prelude/` as
 `.rs` template files included with `include_str!` so it's reviewable
@@ -117,9 +117,9 @@ Teaching: E0037 `println!`/`eprintln!` → `print`/`io.eprint` · E0038
 
 ## Examples & tests
 
-- `examples/23_files.lex` — read/transform/write with error handling.
-- `examples/24_json.lex` — parse, walk, mutate, re-render JSON.
-- `examples/25_cli.lex` — args + env + exit codes (a real mini-tool).
+- `examples/23_files.jet` — read/transform/write with error handling.
+- `examples/24_json.jet` — parse, walk, mutate, re-render JSON.
+- `examples/25_cli.jet` — args + env + exit codes (a real mini-tool).
 - Golden tests use tempdirs; `std/time`/`std/random` examples pin output
   via `seed` and injected clock (the prelude reads `LEX_TEST_EPOCH` env
   var when set — test hook, documented as such).

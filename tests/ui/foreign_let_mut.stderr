@@ -1,5 +1,5 @@
-Error [E0009]: Lex does not use `let mut`
-  --> tests/ui/foreign_let_mut.lex:2:5
+Error [E0009]: Jet does not use `let mut`
+  --> tests/ui/foreign_let_mut.jet:2:5
     |
   2 |     let mut count = 1;
     |     ^^^

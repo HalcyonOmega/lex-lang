@@ -1,5 +1,5 @@
-Error [E0010]: Lex does not use `set`
-  --> tests/ui/foreign_set.lex:2:5
+Error [E0010]: Jet does not use `set`
+  --> tests/ui/foreign_set.jet:2:5
     |
   2 |     set limit = 10;
     |     ^^^

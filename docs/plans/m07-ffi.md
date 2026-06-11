@@ -7,14 +7,14 @@ passing) and M6 (multi-file driver work).
 ## Goal
 
 Call vetted Rust functions across an **owned/copied boundary** — interop
-without importing Rust's type system (philosophy C2). Lex stays small;
+without importing Rust's type system (philosophy C2). Jet stays small;
 the escape hatch is explicit, visible, and safe.
 
 ## Surface (uses ballot recommendation — substitute ratified choice)
 
-```lex
+```jet
 extern rust "rand@0.8" {
-    // Lex signature; the body lives in the named crate.
+    // Jet signature; the body lives in the named crate.
     fn random_range(low: Int, high: Int) -> Int = "rand::random_range";
 }
 
@@ -24,7 +24,7 @@ fn main() {
 ```
 
 - `extern rust "<crate>[@<version>]" { … }` declares a block of foreign
-  functions. Each entry is a normal Lex signature plus `= "rust::path"`
+  functions. Each entry is a normal Jet signature plus `= "rust::path"`
   naming the target item. Version pins are required for non-std
   (E0701) — reproducibility without a manifest.
 - `extern rust "std" { … }` works for std items with no dependency.
@@ -48,14 +48,14 @@ This is the milestone's real work. When a program's import graph
 contains any `extern rust` with a crate dependency:
 
 1. The driver materializes a **hidden** cargo project under
-   `~/.cache/lex/ffi/<hash-of-deps>/` (Cargo.toml generated from the
+   `~/.cache/jet/ffi/<hash-of-deps>/` (Cargo.toml generated from the
    pinned crate list, src/lib.rs containing thin `pub fn` wrappers that
    do the type conversions and `catch_unwind`).
 2. `cargo build --release` runs once per dep-set (cached thereafter);
    absence of cargo → E0703 with install instructions.
 3. The user's generated .rs is compiled as before with `--extern` flags
    pointing at the built rlibs. The user-facing flow is still just
-   `lex run file.lex` (R9: no manifest, no cargo project in the user's
+   `jet run file.jet` (R9: no manifest, no cargo project in the user's
    directory, ever).
 4. Network/build failures from cargo are reported as **tool errors**
    (E0704: "couldn't fetch `rand@0.8`") quoting cargo only inside an
@@ -73,12 +73,12 @@ to user errors, because the user asserted a foreign fact.
 E0701 missing version pin · E0702 type can't cross the FFI boundary ·
 E0703 cargo not installed · E0704 dependency fetch/build failed ·
 E0705 foreign signature mismatch.
-Teaching: E0031 `unsafe` → not in Lex; whole blocks live behind
+Teaching: E0031 `unsafe` → not in Jet; whole blocks live behind
 `extern rust`.
 
 ## Examples & tests
 
-- `examples/18_ffi.lex` — calls a real crate function (pick one with a
+- `examples/18_ffi.jet` — calls a real crate function (pick one with a
   tiny dep tree and deterministic output for goldens — e.g. a hashing or
   base64 crate rather than rand).
 - ui fixtures for E0701/E0702/E0705 (+ fixed companions).
@@ -87,7 +87,7 @@ Teaching: E0031 `unsafe` → not in Lex; whole blocks live behind
 
 ## Out of scope
 
-Exporting Lex to Rust, callbacks/closures over the boundary, borrowed
+Exporting Jet to Rust, callbacks/closures over the boundary, borrowed
 returns, async, raw pointers, build.rs crates with system deps (document
 "pure-Rust crates only" in the error text when the build fails),
 auto-binding generation. Registry/manifest integration is M12 (the

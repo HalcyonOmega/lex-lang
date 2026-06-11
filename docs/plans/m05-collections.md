@@ -16,7 +16,7 @@ like wordcount, grep-lite, and CSV munging are pleasant.
 
 ## Surface (uses ballot recommendations — substitute ratified choices)
 
-```lex
+```jet
 fn main() {
     var nums: List[Int] = [3, 1, 2];
     nums.push(4);
@@ -103,11 +103,11 @@ receiver (reuses M2 E0202 machinery via `mut self`).
 
 ## Codegen lowering
 
-| Lex                  | Rust                                            |
+| Jet                  | Rust                                            |
 |----------------------|--------------------------------------------------|
 | `List[T]` / `[a, b]` | `Vec<T>` / `vec![a, b]`                          |
 | `Map[K, V]` / `[:]`  | `std::collections::BTreeMap<K, V>` / `BTreeMap::new()` (BTree for deterministic iteration) |
-| `xs[i]`              | runtime-checked helper `lex_index(&xs, i, file, line)` → friendly report, exit 70 |
+| `xs[i]`              | runtime-checked helper `jet_index(&xs, i, file, line)` → friendly report, exit 70 |
 | `xs[a..b]` slice     | helper that bounds-checks then `xs[a..=b].to_vec()` |
 | `s.chars()`          | `s.chars()` adapter; `Char` → `char`             |
 | `s.len()`            | `s.chars().count()` (chars, per S41)             |
@@ -117,7 +117,7 @@ Runtime report for bounds (same shape as M4's):
 
 ```
 The program stopped: the list has 3 items, so position 99 doesn't exist
-  --> file.lex:7
+  --> file.jet:7
 ```
 
 ## Diagnostics to register
@@ -133,13 +133,13 @@ Teaching: E0026 `as` casts → `.to_float()` etc. · E0027 `append`/`add`
 
 ## Examples & tests
 
-- `examples/15_lists.lex` — build/sort/slice/join.
-- `examples/16_wordcount.lex` — THE exit-criteria example: split, count
+- `examples/15_lists.jet` — build/sort/slice/join.
+- `examples/16_wordcount.jet` — THE exit-criteria example: split, count
   into a map, print sorted results.
-- `examples/17_strings.lex` — chars, unicode (`"héllo"`), trim/split/
+- `examples/17_strings.jet` — chars, unicode (`"héllo"`), trim/split/
   replace, parse with `or` defaults.
 - Golden stderr tests for out-of-bounds and missing-key reports.
-- ui fixtures for all E05xx/L0501 + teaching errors, with `.fixed.lex`.
+- ui fixtures for all E05xx/L0501 + teaching errors, with `.fixed.jet`.
 - An ownership fixture: mutating a list inside its own `for` loop, plus
   the fixed version using an index loop.
 

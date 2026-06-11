@@ -15,7 +15,7 @@ use std::process::Command;
 fn examples_compile_and_run() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let ex_dir = root.join("examples");
-    let ext = lex::syntax::FILE_EXT;
+    let ext = jet::syntax::FILE_EXT;
     let have_rustc = Command::new("rustc").arg("--version").output().is_ok();
     if !have_rustc {
         eprintln!("note: rustc not found; checking codegen only, skipping build+run");
@@ -35,12 +35,12 @@ fn examples_compile_and_run() {
         let stem = path.file_stem().unwrap().to_string_lossy().into_owned();
         let src = fs::read_to_string(&path).unwrap();
 
-        let rust_code = match lex::compile(&src) {
+        let rust_code = match jet::compile(&src) {
             Ok(c) => c.rust,
             Err(diags) => panic!(
                 "example {} failed the front end:\n{}",
                 stem,
-                lex::render_diagnostics(&format!("examples/{}.{}", stem, ext), &src, &diags)
+                jet::render_diagnostics(&format!("examples/{}.{}", stem, ext), &src, &diags)
             ),
         };
 
@@ -58,8 +58,8 @@ fn examples_compile_and_run() {
 
         if have_rustc {
             let dir = std::env::temp_dir();
-            let rs = dir.join(format!("lex_golden_{}.rs", stem));
-            let bin = dir.join(format!("lex_golden_{}", stem));
+            let rs = dir.join(format!("jet_golden_{}.rs", stem));
+            let bin = dir.join(format!("jet_golden_{}", stem));
             fs::write(&rs, &rust_code).unwrap();
             let out = Command::new("rustc")
                 .args(["--edition", "2021"])
@@ -70,7 +70,7 @@ fn examples_compile_and_run() {
                 .unwrap();
             assert!(
                 out.status.success(),
-                "I2 violated: rustc rejected generated code for {} — this is a lex bug:\n{}",
+                "I2 violated: rustc rejected generated code for {} — this is a jet bug:\n{}",
                 stem,
                 String::from_utf8_lossy(&out.stderr)
             );

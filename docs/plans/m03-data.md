@@ -15,7 +15,7 @@ struct/enum values move like any other value; no stored references
 
 ## Surface (examples use ballot recommendations — substitute ratified choices)
 
-```lex
+```jet
 struct Point {
     x: Float;
     y: Float;
@@ -139,7 +139,7 @@ Parser notes:
 
 ## Codegen lowering
 
-| Lex                          | Rust                                        |
+| Jet                          | Rust                                        |
 |------------------------------|---------------------------------------------|
 | `struct Point { x: Float; }` | `struct user_Point { user_x: f64 }` + generated `impl Display`, `impl Clone` (iff clonable), `impl PartialEq` (iff comparable) |
 | `enum Shape { Circle(Float); Rect(w: Float, h: Float); }` | `enum user_Shape { Circle(f64), Rect { user_w: f64, user_h: f64 } }` (+ `Box` where needed) |
@@ -172,13 +172,13 @@ Teaching: E0020 `nil`/`None`/`Some`/`none`/`some` → `null`/`value` · E0021
 
 ## Examples & tests
 
-- `examples/10_structs.lex` — shapes with methods, static constructor,
+- `examples/10_structs.jet` — shapes with methods, static constructor,
   printing; expected output pinned.
-- `examples/11_enums.lex` — traffic-light state machine driven by an
+- `examples/11_enums.jet` — traffic-light state machine driven by an
   exhaustive switch.
-- `examples/12_option.lex` — search returning `Int?`, handled with `==`.
+- `examples/12_option.jet` — search returning `Int?`, handled with `==`.
 - ui fixtures for every E03xx/L0301 + the four teaching errors, each
-  errorful fixture with a `.fixed.lex` companion (pattern from M2).
+  errorful fixture with a `.fixed.jet` companion (pattern from M2).
 - Ownership interaction tests: struct moves, `take self` consume,
   L0201 implicit clone of a struct argument.
 - Golden tests prove rustc accepts everything sema passes, including a

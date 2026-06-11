@@ -1,5 +1,5 @@
-Error [E0015]: Lex does not use `use`
-  --> tests/ui/foreign_use.lex:1:1
+Error [E0015]: Jet does not use `use`
+  --> tests/ui/foreign_use.jet:1:1
     |
   1 | use grades;
     | ^^^

@@ -8,10 +8,10 @@ the spec and a passing example disagree, the spec is wrong — fix the spec.
 
 ## M1 — what exists today (values, expressions, control flow)
 
-### Lexical rules
+### Jetical rules
 
 - Source is UTF-8. Identifiers: a letter or `_`, then letters, digits, `_`.
-- Source files use the `.lex` extension (N2).
+- Source files use the `.jet` extension (N2).
 - Line comments: `//` to end of line (S5).
 - String literals: `"..."` on a single line. Escapes (S20): `\n` `\t` `\"`
   `\\` only; anything else after `\` is E0001. Interpolation (S8): `{expr}`
@@ -22,8 +22,8 @@ the spec and a passing example disagree, the spec is wrong — fix the spec.
 - `true` and `false` are `Bool` literals.
 - Statements end with `;` (S6 — required, including before `}`). Blocks
   (`}` of `if`/`while`/`for`/`fn`) don't take one; `switch` arms do.
-- The lexer recovers from bad characters and keeps going; one run reports
-  every lexical error it can.
+- The jeter recovers from bad characters and keeps going; one run reports
+  every jetical error it can.
 
 ### Grammar (EBNF)
 
@@ -92,7 +92,7 @@ error naming the milestone (E0006 `?` → M4).
 A future feature must never die as a generic syntax error. Teaching
 errors (S14, E0008–E0016) recognize foreign spellings — `def`, `let`,
 `set`, `println`, `and`/`or`/`not`, `Text`, `try`, `use`, `match` — and
-name the Lex form.
+name the Jet form.
 
 ## M2 — ownership (done)
 

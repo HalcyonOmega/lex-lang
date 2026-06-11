@@ -131,7 +131,7 @@ hover/docs tooling; plain text v1. Alternatives: `##`, docstrings.
 
 Rust: n/a (it *is* Rust). Experts: A — explicit block, visible
 boundary, version pinned at the declaration. Beginners: won't touch FFI;
-A at least reads declaratively. → **A** (pins migrate into lex.toml when
+A at least reads declaratively. → **A** (pins migrate into jet.toml when
 a manifest exists, per M12).
 
 ---
@@ -216,12 +216,12 @@ with the M11 error messages ("the new task might outlive `data`…").
 → **A**, as std functions not keywords (smallness: no new syntax at all).
 
 **S52 — Package manifest.**
-- A. `lex.toml` (tiny TOML subset, hand-parsed): `[package]`,
+- A. `jet.toml` (tiny TOML subset, hand-parsed): `[package]`,
   `[dependencies]` (git/path, exact pins), `[rust-dependencies]`;
-  lockfile `lex.lock`; commands `lex add` / `lex fetch`; registry later
+  lockfile `jet.lock`; commands `jet add` / `jet fetch`; registry later
   as a static git index
 - B. JSON manifest
-- C. manifest written in Lex itself (Zig's build.zig direction)
+- C. manifest written in Jet itself (Zig's build.zig direction)
 
 Rust: Cargo.toml. Experts: A — TOML is the settled answer; C is clever
 but makes tooling/registry parsing turing-complete. Beginners: A, it's

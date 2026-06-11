@@ -1,5 +1,5 @@
 Error [E0110]: the right side of `||` must be Bool (true or false), but this is Int (a whole number)
-  --> tests/ui/or_value_no_comparison.lex:3:22
+  --> tests/ui/or_value_no_comparison.jet:3:22
     |
   3 |     val x = ready || 5;
     |                      ^

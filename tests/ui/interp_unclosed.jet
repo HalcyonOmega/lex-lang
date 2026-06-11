@@ -1,4 +1,4 @@
 fn main() {
-    val name = "Lex";
+    val name = "Jet";
     print("{name");
 }

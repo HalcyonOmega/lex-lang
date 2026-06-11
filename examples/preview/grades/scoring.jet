@@ -1,4 +1,4 @@
-// Companion module for 03_syntax_showcase.lex (S16 preview).
+// Companion module for 03_syntax_showcase.jet (S16 preview).
 // Imported as: import "grades/scoring";  or  import scoring;
 // Only pub items are visible outside this file (S18).
 

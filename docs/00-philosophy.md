@@ -46,12 +46,12 @@ internally; users never see that.
 **C3 — Transpiling to Rust vs. owning diagnostics.** Resolved: the front
 end owns *all* semantics and *every* user-facing error, including a
 complete ownership checker. rustc is a soundness verifier and optimizer.
-A rustc error on generated code is an internal compiler error in lex,
+A rustc error on generated code is an internal compiler error in jet,
 never the user's problem (invariant I2).
 
 ## Distribution tenets (owner-directed)
 
-- **A file is a complete program.** `lex run foo.lex` needs no manifest,
+- **A file is a complete program.** `jet run foo.jet` needs no manifest,
   no project folder, no config. No ceremony stands between a beginner and
   a running program. A package/multi-file story, if it ever comes, is
   opt-in and never required for the single-file case. (Architecture R9.)
@@ -76,7 +76,7 @@ learning projects. Not (yet): kernels, embedded, async network servers.
 
 **Owner direction (2026-06-11):** the bar for v1.0 rises to a second
 audience — experienced developers who would otherwise reach for Go, Zig,
-C, or Rust for small tools, and who should *prefer* Lex: minimal
+C, or Rust for small tools, and who should *prefer* Jet: minimal
 friction by default, control when wanted, with performance and safety
 enforced underneath by the Rust backend and the ownership model. The
 roadmap (docs/05) reflects this; the ranked priorities above do not

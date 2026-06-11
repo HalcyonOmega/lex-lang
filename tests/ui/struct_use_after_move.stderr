@@ -1,5 +1,5 @@
 Error [E0121]: `p` was given away earlier, so it can't be used here
-  --> tests/ui/struct_use_after_move.lex:12:11
+  --> tests/ui/struct_use_after_move.jet:12:11
     |
  12 |     print(p.x);
     |           ^

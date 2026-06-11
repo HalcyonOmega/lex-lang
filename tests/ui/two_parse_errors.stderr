@@ -1,5 +1,5 @@
 Error [E0003]: expected a name after a binding keyword, found a number
-  --> tests/ui/two_parse_errors.lex:2:9
+  --> tests/ui/two_parse_errors.jet:2:9
     |
   2 |     val 1 = 2;
     |         ^
@@ -7,7 +7,7 @@ Error [E0003]: expected a name after a binding keyword, found a number
  Fix: e.g. `main`, `count`, `_tmp`
 
 Error [E0003]: expected `=` in a binding, found `==`
-  --> tests/ui/two_parse_errors.lex:3:11
+  --> tests/ui/two_parse_errors.jet:3:11
     |
   3 |     val y == 3;
     |           ^^

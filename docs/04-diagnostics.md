@@ -21,7 +21,7 @@ part of M1.
 
 ```
 Error [E0102]: nothing named `pirnt` exists here
-  --> tests/ui/unknown_function.lex:2:5
+  --> tests/ui/unknown_function.jet:2:5
     |
   2 |     pirnt("hi")
     |     ^^^^^
@@ -31,7 +31,7 @@ Error [E0102]: nothing named `pirnt` exists here
 
 Diagnostics without a span (e.g. E0101) omit the location/source block.
 Multiple diagnostics are separated by one blank line. Every stage reports
-all the problems it can in one run (M1 error recovery): the lexer skips
+all the problems it can in one run (M1 error recovery): the jeter skips
 past bad characters, the parser re-syncs at statement boundaries, and
 sema checks every function. Caret columns are display-width aware, so
 underlines line up under wide characters and emoji.
@@ -51,7 +51,7 @@ before continuing.
 - Staged features name their milestone and give today's workaround
   (see E0006/E0117). A future feature must never die as a generic error.
 - Teaching errors (S14, E0008–E0016) recognize a familiar foreign
-  spelling, name the one Lex form, and then keep going as if the canonical
+  spelling, name the one Jet form, and then keep going as if the canonical
   form had been written — one foreign word never hides the rest of the
   file's problems.
 - Typos get suggestions (edit distance ≤ 2): "did you mean `print`?"
@@ -62,13 +62,13 @@ before continuing.
 
 | Code  | Stage | Meaning                                  |
 |-------|-------|------------------------------------------|
-| E0001 | lex   | character/escape/lone brace means nothing here |
-| E0002 | lex   | unterminated text literal or interpolation |
+| E0001 | jet   | character/escape/lone brace means nothing here |
+| E0002 | jet   | unterminated text literal or interpolation |
 | E0003 | parse | expected X, found Y                       |
 | E0004 | parse | *retired in M1* (was: parameters staged)  |
 | E0005 | parse | *retired in M1* (was: variables staged)   |
 | E0006 | parse | staged: `?` (errors as values) arrives in M4 |
-| E0007 | lex   | integer too large for 64 bits             |
+| E0007 | jet   | integer too large for 64 bits             |
 | E0008 | parse | teaching: `def`/`func` → `fn` (S14)       |
 | E0009 | parse | teaching: `let`/`let mut` → `val`/`var`   |
 | E0010 | parse | teaching: `set` → `val`                   |

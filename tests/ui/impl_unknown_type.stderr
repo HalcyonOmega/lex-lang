@@ -1,5 +1,5 @@
 Error [E0301]: `impl Missing` names a type that doesn't exist
-  --> tests/ui/impl_unknown_type.lex:1:6
+  --> tests/ui/impl_unknown_type.jet:1:6
     |
   1 | impl Missing {
     |      ^^^^^^^

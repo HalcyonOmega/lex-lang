@@ -1,5 +1,5 @@
 Error [E0121]: `a` was given away earlier, so it can't be used here
-  --> tests/ui/use_after_move.lex:4:11
+  --> tests/ui/use_after_move.jet:4:11
     |
   4 |     print(a);
     |           ^

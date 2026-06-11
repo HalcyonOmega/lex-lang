@@ -1,6 +1,6 @@
 //! Snapshot tests for every user-facing diagnostic (invariant I4).
 //!
-//! Each tests/ui/NAME.lex has a sibling NAME.stderr holding the exact
+//! Each tests/ui/NAME.jet has a sibling NAME.stderr holding the exact
 //! rendered output. To update after an INTENTIONAL wording change:
 //!
 //!     UPDATE_EXPECT=1 cargo test
@@ -14,7 +14,7 @@ use std::path::PathBuf;
 #[test]
 fn ui_snapshots() {
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/ui");
-    let ext = lex::syntax::FILE_EXT;
+    let ext = jet::syntax::FILE_EXT;
     let mut entries: Vec<_> = fs::read_dir(&dir)
         .unwrap()
         .map(|e| e.unwrap().path())
@@ -35,8 +35,8 @@ fn ui_snapshots() {
         // Stable path string so snapshots match on every machine.
         let shown_path = format!("tests/ui/{}", name);
 
-        let actual = match lex::compile(&src) {
-            Err(diags) => lex::render_diagnostics(&shown_path, &src, &diags),
+        let actual = match jet::compile(&src) {
+            Err(diags) => jet::render_diagnostics(&shown_path, &src, &diags),
             Ok(_) => "(no errors)\n".to_string(),
         };
 

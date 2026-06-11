@@ -1,5 +1,5 @@
 Error [E0306]: pattern `Circle` expects 1 binding, got 2
-  --> tests/ui/pattern_binding_count.lex:7:8
+  --> tests/ui/pattern_binding_count.jet:7:8
     |
   7 |     if s == Circle(a, b) {
     |        ^^^^^^^^^^^^^^^^^

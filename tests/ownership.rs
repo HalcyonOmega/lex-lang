@@ -12,7 +12,7 @@ fn main() {
     consume(msg);
 }
 "#;
-    let out = lex::compile(src).expect("should compile");
+    let out = jet::compile(src).expect("should compile");
     assert!(
         out.lints.iter().any(|d| d.code == "L0201"),
         "expected L0201 implicit clone lint"
@@ -32,7 +32,7 @@ fn main() {
     touch(x);
 }
 "#;
-    let diags = lex::compile(src).expect_err("should error");
+    let diags = jet::compile(src).expect_err("should error");
     assert!(diags.iter().any(|d| d.code == "E0202"));
 }
 
@@ -48,7 +48,7 @@ fn main() {
     consume(msg);
 }
 "#;
-    let diags = lex::compile(src).expect_err("should error");
+    let diags = jet::compile(src).expect_err("should error");
     assert!(diags.iter().any(|d| d.code == "E0201"));
 }
 
@@ -63,7 +63,7 @@ fn main() {
     print(0);
 }
 "#;
-    let out = lex::compile(src).expect("should compile");
+    let out = jet::compile(src).expect("should compile");
     assert!(
         out.rust.contains("-> &String"),
         "view return should emit &T: {}",
@@ -88,7 +88,7 @@ fn main() {
     print(0);
 }
 "#;
-    let diags = lex::compile(src).expect_err("should error");
+    let diags = jet::compile(src).expect_err("should error");
     assert!(diags.iter().any(|d| d.code == "E0206"));
 }
 
@@ -103,7 +103,7 @@ fn main() {
     print(0);
 }
 "#;
-    let out = lex::compile(src).expect("should compile");
+    let out = jet::compile(src).expect("should compile");
     assert!(
         out.rust.contains("struct user_Holder<'src>"),
         "expected lifetime param on struct: {}",
@@ -133,7 +133,7 @@ fn main() {
     print(0);
 }
 "#;
-    let out = lex::compile(src).expect("should compile with lint");
+    let out = jet::compile(src).expect("should compile with lint");
     assert!(
         out.lints.iter().any(|d| d.code == "L0202"),
         "expected L0202 loop auto-clone lint"
@@ -154,7 +154,7 @@ fn main() {
     show(LIMIT);
 }
 "#;
-    let out = lex::compile(src).expect("should compile");
+    let out = jet::compile(src).expect("should compile");
     assert!(
         out.rust.contains("static USER_LIMIT"),
         "address-taken const should emit static: {}",
@@ -174,7 +174,7 @@ fn main() {
     both(mut x, x);
 }
 "#;
-    let diags = lex::compile(src).expect_err("should error");
+    let diags = jet::compile(src).expect_err("should error");
     assert!(diags.iter().any(|d| d.code == "E0204"));
 }
 
@@ -186,6 +186,6 @@ fn main() {
     print(*x);
 }
 "#;
-    let diags = lex::compile(src).expect_err("should error");
+    let diags = jet::compile(src).expect_err("should error");
     assert!(diags.iter().any(|d| d.code == "E0208"));
 }

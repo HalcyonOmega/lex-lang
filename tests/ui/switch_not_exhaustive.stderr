@@ -1,5 +1,5 @@
 Error [E0307]: `switch` doesn't cover every case — missing: Green
-  --> tests/ui/switch_not_exhaustive.lex:8:5
+  --> tests/ui/switch_not_exhaustive.jet:8:5
     |
   8 |     switch x {
     |     ^^^^^^

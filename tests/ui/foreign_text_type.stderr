@@ -1,5 +1,5 @@
 Error [E0013]: the text type is called `String`, not `Text`
-  --> tests/ui/foreign_text_type.lex:2:18
+  --> tests/ui/foreign_text_type.jet:2:18
     |
   2 |     val message: Text = "hello";
     |                  ^^^^

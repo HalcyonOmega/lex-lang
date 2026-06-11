@@ -1,5 +1,5 @@
-Error [E0016]: Lex does not use `match`
-  --> tests/ui/foreign_match.lex:3:5
+Error [E0016]: Jet does not use `match`
+  --> tests/ui/foreign_match.jet:3:5
     |
   3 |     match x {
     |     ^^^^^

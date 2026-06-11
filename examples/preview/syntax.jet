@@ -55,7 +55,7 @@ fn print_report(read name: String, score: Int) {
 
 pub fn main() {
     var attempts: Int = 0;
-    val name: String = "Alex";
+    val name: String = "Ajet";
     val raw: String = "88";
 
     val score: Int = parse_score(raw)?;

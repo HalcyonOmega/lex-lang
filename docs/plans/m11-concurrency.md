@@ -14,7 +14,7 @@ mutable state in v1 — the compiler *proves* it, which is the whole pitch
 
 ## Surface (uses ballot recommendations — substitute ratified choices)
 
-```lex
+```jet
 import "std/tasks" as tasks;
 
 fn main() {
@@ -74,9 +74,9 @@ fn main() {
 
 ## Codegen lowering
 
-| Lex                       | Rust                                        |
+| Jet                       | Rust                                        |
 |---------------------------|----------------------------------------------|
-| `tasks.spawn(f)`          | `std::thread::spawn(move || …)` wrapped in a `LexTask<T>` prelude struct holding the `JoinHandle` |
+| `tasks.spawn(f)`          | `std::thread::spawn(move || …)` wrapped in a `JetTask<T>` prelude struct holding the `JoinHandle` |
 | `t.join()`                | `handle.join()` — `Err` (panic) re-raises the runtime report |
 | `Channel[T]`/`Sender[T]`  | `std::sync::mpsc::{Receiver, Sender}` in prelude wrappers |
 | `receive()`               | `recv()` mapping `RecvError` → `err(Closed)` |
@@ -88,13 +88,13 @@ a rustc `Send` error on generated code is an ICE and a sema bug.
 
 E1101 task capture needs ownership (clone/take) · E1102 value isn't
 sendable (with the path) · L1101 task never joined.
-Teaching: E0040 `async`/`await` → not in Lex; tasks block · E0041
+Teaching: E0040 `async`/`await` → not in Jet; tasks block · E0041
 `mutex`/`lock` → channels ("share by communicating").
 
 ## Examples & tests
 
-- `examples/26_tasks.lex` — parallel sum split across 4 tasks.
-- `examples/27_pipeline.lex` — producer/consumer over a channel.
+- `examples/26_tasks.jet` — parallel sum split across 4 tasks.
+- `examples/27_pipeline.jet` — producer/consumer over a channel.
 - ui fixtures: shared-var capture (E1101 + fixed-with-channel
   companion), unsendable struct (E1102), unjoined task lint.
 - Golden tests with deterministic outputs (sorted collection of

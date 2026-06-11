@@ -1,5 +1,5 @@
 Error [E0304]: `Light` has no variant `Blue`
-  --> tests/ui/enum_unknown_variant.lex:6:19
+  --> tests/ui/enum_unknown_variant.jet:6:19
     |
   6 |     val x = Light.Blue;
     |                   ^^^^

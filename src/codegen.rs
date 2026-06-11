@@ -6,8 +6,8 @@
 //!   - scalar params (Int/Float/Bool) pass by value, String by `&String`;
 //!     `mut` params are `&mut T`; `take` params are `T` by value
 //!   - a name bound to a `&T`/`&mut T` parameter is always emitted as the
-//!     place `(*user_x)`, so every name has its plain Lex type
-//!   - every printed/interpolated value goes through the `LexShow` trait
+//!     place `(*user_x)`, so every name has its plain Jet type
+//!   - every printed/interpolated value goes through the `JetShow` trait
 //!     in the prelude (Float keeps its decimal part there, S21)
 //!   - every operator result is fully parenthesized
 
@@ -21,12 +21,12 @@ use std::collections::{HashMap, HashSet};
 /// Emitted at the top of every program: one tiny display trait so codegen
 /// never needs to know a value's type to print it. Monomorphized by rustc;
 /// zero runtime dispatch. Float printing keeps the decimal part (S21).
-const PRELUDE: &str = r#"trait LexShow { fn lex_show(&self) -> String; }
-impl LexShow for i64 { fn lex_show(&self) -> String { self.to_string() } }
-impl LexShow for f64 { fn lex_show(&self) -> String { format!("{:?}", self) } }
-impl LexShow for bool { fn lex_show(&self) -> String { self.to_string() } }
-impl LexShow for String { fn lex_show(&self) -> String { self.clone() } }
-impl<T: LexShow> LexShow for &T { fn lex_show(&self) -> String { (**self).lex_show() } }
+const PRELUDE: &str = r#"trait JetShow { fn jet_show(&self) -> String; }
+impl JetShow for i64 { fn jet_show(&self) -> String { self.to_string() } }
+impl JetShow for f64 { fn jet_show(&self) -> String { format!("{:?}", self) } }
+impl JetShow for bool { fn jet_show(&self) -> String { self.to_string() } }
+impl JetShow for String { fn jet_show(&self) -> String { self.clone() } }
+impl<T: JetShow> JetShow for &T { fn jet_show(&self) -> String { (**self).jet_show() } }
 "#;
 
 fn mangle(name: &str) -> String {
@@ -98,7 +98,7 @@ fn rust_return_type(cx: &Cx, ty: &Type, is_view: bool) -> String {
     }
 }
 
-/// What a Lex name looks like in Rust expression position.
+/// What a Jet name looks like in Rust expression position.
 #[derive(Clone)]
 struct Slot {
     rust_name: String,
@@ -463,7 +463,7 @@ fn emit_struct(cx: &Cx, s: &StructDef, out: &mut String) {
     out.push_str("}\n\n");
     if lifetimes.is_empty() {
         out.push_str(&format!(
-            "impl LexShow for user_{} {{\n    fn lex_show(&self) -> String {{ format!(\"{{:?}}\", self) }}\n}}\n\n",
+            "impl JetShow for user_{} {{\n    fn jet_show(&self) -> String {{ format!(\"{{:?}}\", self) }}\n}}\n\n",
             s.name
         ));
     } else {
@@ -473,7 +473,7 @@ fn emit_struct(cx: &Cx, s: &StructDef, out: &mut String) {
             .collect::<Vec<_>>()
             .join(", ");
         out.push_str(&format!(
-            "impl<{}> LexShow for user_{}<{}> {{\n    fn lex_show(&self) -> String {{ format!(\"{{:?}}\", self) }}\n}}\n\n",
+            "impl<{}> JetShow for user_{}<{}> {{\n    fn jet_show(&self) -> String {{ format!(\"{{:?}}\", self) }}\n}}\n\n",
             lt, s.name, lt
         ));
     }
@@ -510,7 +510,7 @@ fn emit_enum(cx: &Cx, e: &EnumDef, out: &mut String) {
     }
     out.push_str("}\n\n");
     out.push_str(&format!(
-        "impl LexShow for user_{} {{\n    fn lex_show(&self) -> String {{ format!(\"{{:?}}\", self) }}\n}}\n\n",
+        "impl JetShow for user_{} {{\n    fn jet_show(&self) -> String {{ format!(\"{{:?}}\", self) }}\n}}\n\n",
         e.name
     ));
 }
@@ -872,7 +872,7 @@ fn emit_mixed_switch(
     out.push_str(&format!("{}{{\n", pad));
     let inner_pad = "    ".repeat(indent + 1);
     out.push_str(&format!(
-        "{}let _lex_switch_subject = &({});\n",
+        "{}let _jet_switch_subject = &({});\n",
         inner_pad,
         emit_expr(cx, subject, env)
     ));
@@ -1374,30 +1374,30 @@ fn emit_str(cx: &Cx, parts: &[StrPart], env: &HashMap<String, Slot>) -> String {
             return format!("{:?}.to_string()", s);
         }
     }
-    let mut body = String::from("{ let mut _lex_s = String::new(); ");
+    let mut body = String::from("{ let mut _jet_s = String::new(); ");
     for p in parts {
         match p {
             StrPart::Lit(s) => {
                 if !s.is_empty() {
-                    body.push_str(&format!("_lex_s.push_str({:?}); ", s));
+                    body.push_str(&format!("_jet_s.push_str({:?}); ", s));
                 }
             }
             StrPart::Interp(e) => {
                 body.push_str(&format!(
-                    "_lex_s.push_str(&({}).lex_show()); ",
+                    "_jet_s.push_str(&({}).jet_show()); ",
                     emit_expr(cx, e, env)
                 ));
             }
         }
     }
-    body.push_str("_lex_s }");
+    body.push_str("_jet_s }");
     body
 }
 
 fn emit_call(cx: &Cx, call: &crate::ast::Call, env: &HashMap<String, Slot>) -> String {
     if call.name == syntax::BUILTIN_PRINT {
         let arg = emit_expr(cx, &call.args[0].expr, env);
-        return format!("println!(\"{{}}\", ({}).lex_show())", arg);
+        return format!("println!(\"{{}}\", ({}).jet_show())", arg);
     }
     let sig = cx.sigs.get(&call.name);
     let args = emit_call_args(cx, sig.map(|s| s.as_slice()), &call.args, env);

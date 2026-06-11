@@ -1,5 +1,5 @@
 Error [E0001]: a lone `}` inside quoted text
-  --> tests/ui/string_lone_brace.lex:2:14
+  --> tests/ui/string_lone_brace.jet:2:14
     |
   2 |     print("a } b");
     |              ^

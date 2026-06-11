@@ -1,5 +1,5 @@
-Error [E0001]: `\p` isn't an escape Lex knows
-  --> tests/ui/bad_escape.lex:2:14
+Error [E0001]: `\p` isn't an escape Jet knows
+  --> tests/ui/bad_escape.jet:2:14
     |
   2 |     print("C:\path");
     |              ^^

@@ -1,5 +1,5 @@
 Warning [L0201]: implicit clone of `p`; write `take p` to transfer ownership or `.clone()` to silence this warning
-  --> tests/ui_lint/struct_implicit_clone.lex:12:10
+  --> tests/ui_lint/struct_implicit_clone.jet:12:10
     |
  12 |     show(p);
     |          ^

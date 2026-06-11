@@ -1,5 +1,5 @@
-Error [E0012]: Lex writes "and" as `&&`
-  --> tests/ui/foreign_and.lex:2:20
+Error [E0012]: Jet writes "and" as `&&`
+  --> tests/ui/foreign_and.jet:2:20
     |
   2 |     val ok = 1 > 0 and 2 > 1;
     |                    ^^^

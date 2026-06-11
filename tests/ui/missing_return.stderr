@@ -1,5 +1,5 @@
 Error [E0114]: `sign` promises to return Int (a whole number), but a path can reach the end without `return`
-  --> tests/ui/missing_return.lex:1:4
+  --> tests/ui/missing_return.jet:1:4
     |
   1 | fn sign(n: Int) -> Int {
     |    ^^^^

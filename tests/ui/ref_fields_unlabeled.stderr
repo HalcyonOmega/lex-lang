@@ -1,5 +1,5 @@
 Error [E0207]: this struct has more than one stored reference without a label
-  --> tests/ui/ref_fields_unlabeled.lex:1:8
+  --> tests/ui/ref_fields_unlabeled.jet:1:8
     |
   1 | struct Pair {
     |        ^^^^

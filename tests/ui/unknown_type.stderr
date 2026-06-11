@@ -1,5 +1,5 @@
 Error [E0119]: there's no type called `Strng`
-  --> tests/ui/unknown_type.lex:2:12
+  --> tests/ui/unknown_type.jet:2:12
     |
   2 |     val x: Strng = "hi";
     |            ^^^^^

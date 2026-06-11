@@ -1,5 +1,5 @@
 Error [E0106]: the name `print` is built in and can't be redefined
-  --> tests/ui/redefine_print.lex:1:4
+  --> tests/ui/redefine_print.jet:1:4
     |
   1 | fn print() {
     |    ^^^^^

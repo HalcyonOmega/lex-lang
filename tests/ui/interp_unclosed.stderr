@@ -1,5 +1,5 @@
 Error [E0002]: this `{` never gets a matching `}`
-  --> tests/ui/interp_unclosed.lex:3:12
+  --> tests/ui/interp_unclosed.jet:3:12
     |
   3 |     print("{name");
     |            ^^^^^^^^

@@ -1,5 +1,5 @@
 Error [E0007]: this number is too big
-  --> tests/ui/int_too_big.lex:2:13
+  --> tests/ui/int_too_big.jet:2:13
     |
   2 |     val x = 99999999999999999999;
     |             ^^^^^^^^^^^^^^^^^^^^

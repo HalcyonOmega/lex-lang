@@ -13,7 +13,7 @@ applied to a new construct.
 
 ## Surface (uses ballot recommendations — substitute ratified choices)
 
-```lex
+```jet
 fn apply_twice(f: fn(Int) -> Int, x: Int) -> Int {
     return f(f(x));
 }
@@ -85,13 +85,13 @@ the two never overlap, document the distinction in docs/01.
 
 ## Codegen lowering
 
-| Lex                          | Rust                                   |
+| Jet                          | Rust                                   |
 |------------------------------|----------------------------------------|
 | `fn(Int) -> Int` (param type)| generic `F: Fn(i64) -> i64` / `FnMut` when captures are mut — sema records which |
 | `fn(Int) -> Int` (stored/returned/field) | `Box<dyn Fn…>` (boxing invisible, like M3 recursion boxes) |
 | `(x) => x * 2`               | `move |x| x * 2` (always `move`; sema already inserted clones for shared captures so `move` is safe) |
 | named fn as value            | path to the mangled fn item            |
-| `nums.map(f)`                | prelude helper `lex_list_map(nums, f)` returning a fresh Vec (eager, no iterators exposed) |
+| `nums.map(f)`                | prelude helper `jet_list_map(nums, f)` returning a fresh Vec (eager, no iterators exposed) |
 
 Always emitting `move` + explicit clones keeps codegen dumb (R1): sema
 decides what's cloned/taken; codegen never reasons about lifetimes.
@@ -107,8 +107,8 @@ E0033 `|x| …` Rust pipes → `(x) => …`.
 
 ## Examples & tests
 
-- `examples/19_closures.lex` — map/filter/reduce pipeline + sort_by.
-- `examples/20_callbacks.lex` — function-typed params, a stored callback
+- `examples/19_closures.jet` — map/filter/reduce pipeline + sort_by.
+- `examples/20_callbacks.jet` — function-typed params, a stored callback
   in a struct field (exercises boxing + capture cloning).
 - ui fixtures for all E08xx/L0801 + teaching errors with fixes.
 - Ownership torture fixtures: mut capture conflicting with outer use

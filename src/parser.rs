@@ -3,7 +3,7 @@
 //!
 //! Teaching errors (S14): familiar foreign spellings (`def`, `let`, `set`,
 //! `and`, `try`, `match`, …) are recognized here only to emit an error
-//! naming the canonical Lex form — then parsing continues as if the
+//! naming the canonical Jet form — then parsing continues as if the
 //! canonical form had been written, so one foreign word doesn't hide the
 //! rest of the file's problems.
 
@@ -13,7 +13,7 @@ use crate::ast::{
     StructDef, SwitchArm, Type, UnOp, Variant, VariantField, VariantPayload,
 };
 use crate::diag::{Diagnostic, Span};
-use crate::lexer::{describe, StrTokPart, TokKind, Token};
+use crate::jeter::{describe, StrTokPart, TokKind, Token};
 use crate::syntax;
 
 pub fn parse(toks: &[Token]) -> Result<Program, Vec<Diagnostic>> {
@@ -206,7 +206,7 @@ impl<'a> Parser<'a> {
                             syntax::KW_FN,
                             foreign
                         ),
-                        "Lex has exactly one spelling for each thing, so all code reads the same"
+                        "Jet has exactly one spelling for each thing, so all code reads the same"
                             .to_string(),
                         format!("replace `{}` with `{}`", foreign, syntax::KW_FN),
                         Some(t.span),
@@ -1530,7 +1530,7 @@ impl<'a> Parser<'a> {
                             "shared access is written with no word in front — not `{}`",
                             syntax::FOREIGN_READ
                         ),
-                        "Lex has exactly one spelling for each thing, so all code reads the same"
+                        "Jet has exactly one spelling for each thing, so all code reads the same"
                             .to_string(),
                         format!(
                             "remove `{}` and write `name: Type`",
@@ -1550,7 +1550,7 @@ impl<'a> Parser<'a> {
                             syntax::KW_MUTATE,
                             syntax::FOREIGN_WRITE
                         ),
-                        "Lex has exactly one spelling for each thing, so all code reads the same"
+                        "Jet has exactly one spelling for each thing, so all code reads the same"
                             .to_string(),
                         format!(
                             "replace `{}` with `{}`",

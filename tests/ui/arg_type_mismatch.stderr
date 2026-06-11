@@ -1,5 +1,5 @@
 Error [E0112]: `show` wants Int (a whole number) for argument 1, but this is String (text)
-  --> tests/ui/arg_type_mismatch.lex:6:10
+  --> tests/ui/arg_type_mismatch.jet:6:10
     |
   6 |     show("hi");
     |          ^^^^

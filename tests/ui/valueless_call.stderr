@@ -1,5 +1,5 @@
 Error [E0116]: `shout` doesn't hand back a value
-  --> tests/ui/valueless_call.lex:6:13
+  --> tests/ui/valueless_call.jet:6:13
     |
   6 |     val x = shout();
     |             ^^^^^

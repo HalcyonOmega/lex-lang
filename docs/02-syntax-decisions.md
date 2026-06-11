@@ -11,11 +11,11 @@ snapshots (`UPDATE_EXPECT=1 cargo test`), and update docs/01-spec.md.
 
 ## Ratified
 
-**N1 — Language name** *(ratified 2026-06-11)*: **Lex**. Binary: **`lex`**.
-Rejected: Jet, Cove, Olex-as-public-name.
+**N1 — Language name** *(ratified 2026-06-11)*: **Jet**. Binary: **`jet`**.
+Rejected: Jet, Cove, Ojet-as-public-name.
 
-**N2 — File extension** *(ratified 2026-06-11)*: **`.lex`**. Source files
-are `name.lex`; the extension matches the language name (three letters).
+**N2 — File extension** *(ratified 2026-06-11)*: **`.jet`**. Source files
+are `name.jet`; the extension matches the language name (three letters).
 
 **S1 — Function keyword** *(ratified 2026-06-11)*: **`fn`**. Rejected:
 `func`, `def` — recognized only as foreign syntax to emit a teaching
@@ -114,7 +114,7 @@ visibly stays a Float. Rejected: Rust's `Display` default (drops `.0`).
 parameters (`mut self`, `take self`; default is shared read). Call with
 **`value.method(args)`** — e.g. `c.area()`. Methods may be written **inside
 the `struct` / `enum` body** (C++-style) **or** in a separate top-level
-**`impl Type { ... }`** block (Rust-style layout, Lex-owned semantics).
+**`impl Type { ... }`** block (Rust-style layout, Jet-owned semantics).
 Both forms are equivalent; pick whichever keeps the file readable. A
 method without `self` in either place is a **static** method on the type
 (e.g. `Circle.unit()`). Rejected for M3: separate `interface` /
@@ -163,7 +163,7 @@ Left-hand side must be `var` or a `mut` parameter. Rejected: `=` only.
 
 **S15 — Binary profile / panic strategy** *(ratified 2026-06-11)*:
 **default build keeps unwinding** (`panic` can be caught inside generated
-test harnesses and task `join`). **`lex build --small`** (M6) uses
+test harnesses and task `join`). **`jet build --small`** (M6) uses
 `opt-level="z"`, full LTO, and **`panic=abort`**. Rejected: abort as the
 only mode.
 
@@ -180,17 +180,17 @@ import scoring as gradebook;          // same module, namespace gradebook
 
 1. **File import** — `import "<path>" [as alias];`  
    `<path>` is a quoted string, relative to the **importing file's
-   directory**, using `/` (no `.lex` suffix; the compiler appends it).
+   directory**, using `/` (no `.jet` suffix; the compiler appends it).
    Subdirectories allowed (`"util/text"`). Default namespace: the **last
    path segment** (`"grades/scoring"` → `scoring.letter(…)`).
 
 2. **Module import** — `import <name> [as alias];`  
    `<name>` is a bare identifier. The compiler searches **recursively from
-   the project root** for a module named `<name>`: either a file `name.lex`
-   anywhere under the root, or a directory `name/` containing `name.lex`
-   or `main.lex`. Skips `build/`, `target/`, and dot-directories.
-   **Project root** = the directory containing `lex.toml` when a manifest
-   exists (M12); otherwise the directory of the **entry** `.lex` file.
+   the project root** for a module named `<name>`: either a file `name.jet`
+   anywhere under the root, or a directory `name/` containing `name.jet`
+   or `main.jet`. Skips `build/`, `target/`, and dot-directories.
+   **Project root** = the directory containing `jet.toml` when a manifest
+   exists (M12); otherwise the directory of the **entry** `.jet` file.
    Ambiguous duplicate matches → **E0606** (lists every path found).
 
 Cross-file access uses `namespace.item` for every `pub` item (S18).
@@ -206,7 +206,7 @@ position (see docs/plans/m03-data.md).
 
 **S30 — Enum declaration & variants (M3)** *(ratified 2026-06-11)*:
 
-```lex
+```jet
 enum Shape {
     Circle(Float);              // one payload field: positional type only
     Rect(w: Float, h: Float);  // two or more: named fields required
@@ -284,7 +284,7 @@ implementation milestone is pending.
 > are the registry; the ballots are the briefing.
 
 **S26. Compile-time execution (comptime) — DEFERRED, not open for work.**
-Zig-style `comptime`: run a subset of Lex at compile time for constants,
+Zig-style `comptime`: run a subset of Jet at compile time for constants,
 specialized functions, and unrolled loops — evaluated in sema, lowered to
 plain Rust by codegen (see architecture R1/R2). Postponed until M5+
 data exists to motivate generics; Tier 2 per philosophy C1. No syntax
@@ -293,11 +293,11 @@ ratified; do not implement until owner promotes from deferred.
 **S28. Traits / interfaces — DEFERRED, owner intends to add.** Polymorphism
 via named capability types (`trait` / `interface` — spelling TBD) is
 **not in M3**. The owner has confirmed traits will be needed; syntax,
-milestone slot, and whether Lex exposes Rust-style trait objects or a
+milestone slot, and whether Jet exposes Rust-style trait objects or a
 simpler model are **open**. Do not implement until ratified. Rejected for
 now: importing Rust's trait system verbatim into user-facing syntax.
 When designing S28, prefer diagnostics beginners can read over maximal
-flexibility.
+fjetibility.
 
 ### Registered for M3–M14 (see docs/06-decision-ballots.md for options)
 
@@ -323,7 +323,7 @@ flexibility.
 | S51 | std library import spelling (`import "std/fs"`)     | M10 |
 | S54 | naming convention lint (snake_case)                 | M10 |
 | S53 | concurrency surface (tasks + channels)              | M11 |
-| S52 | package manifest format & commands (`lex.toml`)     | M12 |
+| S52 | package manifest format & commands (`jet.toml`)     | M12 |
 
 S26 (comptime) and S28 (traits) keep their entries above; their ballots
 live in docs/06 Group 6 (S28 becomes the concrete trait-syntax ballot;
@@ -333,8 +333,8 @@ S26's recommendation is close-as-rejected once S28/S45 are ratified).
 
 | Date       | ID  | Decision                          | By   |
 |------------|-----|-----------------------------------|------|
-| 2026-06-11 | N1  | Lex; binary `lex`                 | owner |
-| 2026-06-11 | N2  | extension `.lex`                  | owner |
+| 2026-06-11 | N1  | Jet; binary `jet`                 | owner |
+| 2026-06-11 | N2  | extension `.jet`                  | owner |
 | 2026-06-11 | S3  | `{ }` blocks                      | owner |
 | 2026-06-11 | S8  | `"text {expr}"` interpolation     | owner |
 | 2026-06-11 | S9  | `print` (not `println`)           | owner |

@@ -29,5 +29,5 @@ fn main() {
     val saved: String = archive(take "vault");
     print(saved);
 
-    print(headline("Lex"));
+    print(headline("Jet"));
 }

@@ -1,5 +1,5 @@
 Error [E0003]: there's nothing inside this `{ }` to show
-  --> tests/ui/interp_empty.lex:2:12
+  --> tests/ui/interp_empty.jet:2:12
     |
   2 |     print("{}");
     |            ^^

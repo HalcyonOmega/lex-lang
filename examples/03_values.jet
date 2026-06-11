@@ -1,9 +1,9 @@
 // 03 — Values and types.
 // `val` names a value that never changes; `var` names one that can.
-// Type annotations are optional — Lex infers local types (S4).
+// Type annotations are optional — Jet infers local types (S4).
 
 fn main() {
-    val name: String = "Lex";   // annotated
+    val name: String = "Jet";   // annotated
     val year = 2026;            // inferred as Int
     val version = 0.1;          // inferred as Float
     val ready: Bool = true;
@@ -30,7 +30,7 @@ fn main() {
 }
 
 // --- expected output --------------------------------------------------
-// Lex 0.1 (ready: true)
+// Jet 0.1 (ready: true)
 // sum 19, half 9.5, leftover 3
 // next year is 2027, depth -12
 // line one

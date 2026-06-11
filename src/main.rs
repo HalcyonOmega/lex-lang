@@ -1,8 +1,8 @@
-//! lex CLI: check / build / run.
+//! jet CLI: check / build / run.
 //!
 //! The driver owns invariant I2: rustc's voice never reaches the user as
 //! if it were their fault. A rustc failure on generated code is reported
-//! as an internal compiler error in lex.
+//! as an internal compiler error in jet.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -21,9 +21,9 @@ usage:
 flags:
   --emit-rust                  also print the generated Rust code
 ",
-        bin = lex::syntax::BINARY_NAME,
-        lang = lex::syntax::LANG_NAME,
-        ext = lex::syntax::FILE_EXT,
+        bin = jet::syntax::BINARY_NAME,
+        lang = jet::syntax::LANG_NAME,
+        ext = jet::syntax::FILE_EXT,
     )
 }
 
@@ -46,16 +46,16 @@ fn main() {
             eprintln!("error: can't find the file `{}`", file);
             eprintln!(
                 " fix: check the spelling, or run {} from the folder that contains it",
-                lex::syntax::BINARY_NAME
+                jet::syntax::BINARY_NAME
             );
             exit(1);
         }
     };
 
-    let rust_code = match lex::compile(&src) {
+    let rust_code = match jet::compile(&src) {
         Ok(out) => {
             if !out.lints.is_empty() {
-                eprint!("{}", lex::render_diagnostics(file, &src, &out.lints));
+                eprint!("{}", jet::render_diagnostics(file, &src, &out.lints));
                 let n = out.lints.len();
                 eprintln!(
                     "\n{} warning{} emitted (compilation continues)",
@@ -66,7 +66,7 @@ fn main() {
             out.rust
         }
         Err(diags) => {
-            eprint!("{}", lex::render_diagnostics(file, &src, &diags));
+            eprint!("{}", jet::render_diagnostics(file, &src, &diags));
             let n = diags.len();
             eprintln!("\n{} problem{} found", n, if n == 1 { "" } else { "s" });
             exit(1);
@@ -97,7 +97,7 @@ fn main() {
             eprintln!(
                 "error: `{}` isn't a {} command",
                 other,
-                lex::syntax::BINARY_NAME
+                jet::syntax::BINARY_NAME
             );
             eprint!("{}", usage());
             exit(2);
@@ -128,7 +128,7 @@ fn build(file: &str, rust_code: &str) {
     });
 
     // Size strategy (docs/03 R8, S15 ratified): default keeps unwinding.
-    // `lex build --small` (opt-level "z", panic=abort) arrives in M6.
+    // `jet build --small` (opt-level "z", panic=abort) arrives in M6.
     // `-O` is opt-level 2; strip + thin LTO drop unused code.
     let out = Command::new("rustc")
         .args([
@@ -157,7 +157,7 @@ fn build(file: &str, rust_code: &str) {
         eprintln!("internal compiler error: the generated Rust did not compile.");
         eprintln!(
             "This is a bug in {}, NOT in your program. Please report it,",
-            lex::syntax::BINARY_NAME
+            jet::syntax::BINARY_NAME
         );
         eprintln!("attaching your source file and the generated file below.");
         eprintln!("  generated: {}", rs_path.display());

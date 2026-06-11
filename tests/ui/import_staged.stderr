@@ -1,5 +1,5 @@
 Error [E0019]: `import` doesn't work yet
-  --> tests/ui/import_staged.lex:1:1
+  --> tests/ui/import_staged.jet:1:1
     |
   1 | import scoring;
     | ^^^^^^

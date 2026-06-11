@@ -2252,7 +2252,7 @@ impl<'a> Checker<'a> {
                             lt.show(),
                             rt.show()
                         ),
-                        "Lex never converts numbers silently; the two sides must match"
+                        "Jet never converts numbers silently; the two sides must match"
                             .to_string(),
                         "make both sides the same kind of number (write `2.0` instead of `2`, or drop the `.0`)".to_string(),
                         Some(span),

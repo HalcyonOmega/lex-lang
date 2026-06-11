@@ -1,5 +1,5 @@
 Warning [L0301]: arm `Red` is unreachable — that case is already handled
-  --> tests/ui_lint/switch_unreachable_arm.lex:12:9
+  --> tests/ui_lint/switch_unreachable_arm.jet:12:9
     |
  12 |         x == Red -> { print("dup"); };
     |         ^^^^^^^^

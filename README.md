@@ -1,6 +1,6 @@
-# Lex
+# Jet
 
-Lex is a programming language focused on developer experience, performance, & safety.
+Jet is a programming language focused on developer experience, performance, & safety.
 
 A memory-safe, compiled language that is **beginner-first without a
 garbage collector**. Rust-class safety and performance; Python-class
@@ -16,20 +16,20 @@ toolchain — see CLAUDE.md, task zero).
 
 ```
 cargo build
-./target/debug/lex run examples/01_hello.lex
-./target/debug/lex check examples/02_functions.lex
-./target/debug/lex build examples/01_hello.lex --emit-rust
+./target/debug/jet run examples/01_hello.jet
+./target/debug/jet check examples/02_functions.jet
+./target/debug/jet build examples/01_hello.jet --emit-rust
 cargo test          # ui snapshots + golden examples
 ```
 
 ### Nix / NixOS
 
 ```bash
-nix build                    # produces ./result/bin/lex
-nix develop                  # dev shell with cargo + rustc + lex
+nix build                    # produces ./result/bin/jet
+nix develop                  # dev shell with cargo + rustc + jet
 ```
 
-See **docs/nix.md** for adding `lex` to `configuration.nix` via a flake
+See **docs/nix.md** for adding `jet` to `configuration.nix` via a flake
 input.
 
 ## The pitch in three lines
@@ -41,14 +41,14 @@ fn main() {
 ```
 
 Errors tell you **what**, **why**, and **how to fix it** — try
-`lex check tests/ui/unknown_function.lex`.
+`jet check tests/ui/unknown_function.jet`.
 
 ## Repo map
 
 | Path      | What                                                    |
 |-----------|---------------------------------------------------------|
 | docs/     | 00 philosophy · 01 spec · 02 **syntax decisions (owner)** · 03 architecture · 04 diagnostics · 05 roadmap |
-| src/      | the compiler: lexer → parser → sema → codegen + CLI     |
+| src/      | the compiler: jeter → parser → sema → codegen + CLI     |
 | examples/ | executable spec, with expected outputs                  |
 | examples/preview/ | syntax previews (not compiled by golden tests)    |
 | tests/ui/ | every error message, snapshot-pinned                    |

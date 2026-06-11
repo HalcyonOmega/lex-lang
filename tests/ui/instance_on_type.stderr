@@ -1,5 +1,5 @@
 Error [E0311]: `sq` is an instance method on `Point`
-  --> tests/ui/instance_on_type.lex:10:17
+  --> tests/ui/instance_on_type.jet:10:17
     |
  10 |     print(Point.sq());
     |                 ^^

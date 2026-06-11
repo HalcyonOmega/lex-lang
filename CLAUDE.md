@@ -22,7 +22,7 @@ This scaffold was authored in a sandbox **without a Rust toolchain**.
    only because rendering drifted from the hand-computed fixtures, check
    the actual output against the format in docs/04-diagnostics.md, then
    bless with `UPDATE_EXPECT=1 cargo test` and re-run.
-3. `./target/debug/lex run examples/01_hello.lex` prints `hello, world`.
+3. `./target/debug/jet run examples/01_hello.jet` prints `hello, world`.
 Commit that as "M0 verified" before anything else.
 
 ## Invariants (violating one = stop and fix)

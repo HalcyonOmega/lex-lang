@@ -1,5 +1,5 @@
 Error [E0002]: this text never gets a closing quote
-  --> tests/ui/unterminated_string.lex:2:11
+  --> tests/ui/unterminated_string.jet:2:11
     |
   2 |     print("hello)
     |           ^^^^^^^

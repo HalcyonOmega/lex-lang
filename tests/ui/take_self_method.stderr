@@ -1,5 +1,5 @@
 Error [E0121]: `b` was given away earlier, so it can't be used here
-  --> tests/ui/take_self_method.lex:12:11
+  --> tests/ui/take_self_method.jet:12:11
     |
  12 |     print(b.n);
     |           ^

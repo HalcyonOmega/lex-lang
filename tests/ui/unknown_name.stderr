@@ -1,5 +1,5 @@
 Error [E0107]: nothing named `scor` exists here
-  --> tests/ui/unknown_name.lex:3:11
+  --> tests/ui/unknown_name.jet:3:11
     |
   3 |     print(scor);
     |           ^^^^

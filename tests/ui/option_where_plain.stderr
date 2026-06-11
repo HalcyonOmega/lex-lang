@@ -1,5 +1,5 @@
 Error [E0112]: `show` wants Int (a whole number) for argument 1, but this is Int?
-  --> tests/ui/option_where_plain.lex:7:10
+  --> tests/ui/option_where_plain.jet:7:10
     |
   7 |     show(x);
     |          ^

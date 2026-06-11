@@ -6,10 +6,10 @@ Depends on M6 phase 4 (LSP v0 skeleton), M12 (multi-package projects).
 
 ## Goal
 
-Make Lex feel first-class in an editor. The compiler front end already
+Make Jet feel first-class in an editor. The compiler front end already
 owns every fact the server needs; this milestone is about exposing it
 with good latency and never crashing. Architecture rule: the LSP reuses
-lexer/parser/sema as libraries — zero duplicated language knowledge.
+jeter/parser/sema as libraries — zero duplicated language knowledge.
 
 ## Capabilities (exact scope, in priority order — ship incrementally)
 
@@ -22,7 +22,7 @@ lexer/parser/sema as libraries — zero duplicated language knowledge.
    completion from the filesystem/package list. Snippet bodies for
    `fn`/`if`/`for`/`switch` (switch snippet pre-fills variant arms for
    enum subjects — the killer demo).
-3. **Hover** — type + ownership info in Lex terms ("`words`:
+3. **Hover** — type + ownership info in Jet terms ("`words`:
    `List[String]` — `var`, may be changed here") and the item's doc
    comment (S49: `///` lines above an item, plain text v1, shown
    verbatim).
@@ -37,7 +37,7 @@ lexer/parser/sema as libraries — zero duplicated language knowledge.
    "add `take`", "add missing variants to switch" (inserts arm stubs),
    "make this `pub`". The diagnostic *renderer* already prints these;
    this structures them. (This refactor lands first — it's the
-   foundation, and CLI output gains `--fix` for free: `lex fmt --fix`
+   foundation, and CLI output gains `--fix` for free: `jet fmt --fix`
    applies safe fixes.)
 7. **Formatting** — already wired to fmt; add range formatting.
 8. **Semantic tokens** — token classification for editors (keyword,
@@ -49,10 +49,10 @@ lexer/parser/sema as libraries — zero duplicated language knowledge.
 
 ## Engineering requirements
 
-- **Incrementality v1 = file-granular:** re-lex/parse only changed
+- **Incrementality v1 = file-granular:** re-jet/parse only changed
   files; sema re-runs whole-program (it's fast; measure before getting
   clever). Budget: <100ms diagnostics for a 5k-line project on a
-  laptop; add a `lex lsp --bench` harness that replays a recorded
+  laptop; add a `jet lsp --bench` harness that replays a recorded
   session and asserts the budget.
 - **Crash policy:** any panic in a request handler is caught, logged to
   a file, the request answered with an error response — the server
@@ -60,14 +60,14 @@ lexer/parser/sema as libraries — zero duplicated language knowledge.
   `window/showMessage`.
 - Unsaved-buffer compilation: all file access in the front end goes
   through a `SourceProvider` trait (overlay of open buffers over disk).
-  This refactor is prerequisite work — do it first, keep `lex run`
+  This refactor is prerequisite work — do it first, keep `jet run`
   byte-identical.
 - JSON-RPC layer: revisit the M6 hand-rolled JSON under load; if it's
   the bottleneck or bug source, request owner approval for serde_json
   in the tooling binary (I6 protocol) rather than gold-plating.
 - VS Code extension (editors/vscode) grows: configuration for binary
-  path, semantic token theme defaults. Also ship editors/lex.tmGrammar
-  and a tree-sitter grammar (tree-sitter-lex/) for everyone else —
+  path, semantic token theme defaults. Also ship editors/jet.tmGrammar
+  and a tree-sitter grammar (tree-sitter-jet/) for everyone else —
   generated from src/syntax.rs where possible so keywords never drift.
 
 ## Exit criteria
@@ -77,7 +77,7 @@ lexer/parser/sema as libraries — zero duplicated language knowledge.
   hover text pinned, rename produces the expected workspace edit,
   switch-arm quick fix inserts compilable code.
 - The bench harness passes its latency budget in CI.
-- Dogfood proof: a recorded demo task — write examples/16_wordcount.lex
+- Dogfood proof: a recorded demo task — write examples/16_wordcount.jet
   from scratch in VS Code using only completions/quick-fixes — has no
   server crash and no stale diagnostics (manual checklist in the PR).
 
