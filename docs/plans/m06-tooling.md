@@ -36,7 +36,7 @@ Test syntax (S43, recommended — first-class blocks, only at top level):
 
 ```lex
 test "parse_age accepts plain digits" {
-    assert(parse_age("42") is ok(42));
+    assert(parse_age("42") == ok(42));
     assert_eq(parse_age(""), err(ParseError.Empty));
 }
 ```

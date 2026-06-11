@@ -4,8 +4,8 @@
 // The left side must be a `var` — compound-assigning a `val` is an error.
 
 // Multi-argument calls (M1): arguments separated by commas.
-fn show(label: String, value: Int) {
-    print("{label} = {value}");
+fn show(label: String, num: Int) {
+    print("{label} = {num}");
 }
 
 fn main() {

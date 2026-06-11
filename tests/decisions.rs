@@ -60,7 +60,8 @@ fn ratified_decisions_enforced() {
     // Surface-syntax ratified IDs must have at least one syntax.rs entry.
     const SURFACE_IN_SYNTAX_RS: &[&str] = &[
         "N1", "N2", "S1", "S2", "S3", "S5", "S6", "S7", "S8", "S9", "S10", "S11", "S13", "S16",
-        "S17", "S18", "S19", "S20", "S22", "S23", "S24", "S27",
+        "S17", "S18", "S19", "S20", "S22", "S23", "S24", "S27", "S29", "S30",
+        "S32",
     ];
     for id in SURFACE_IN_SYNTAX_RS {
         if ratified.contains(*id) {
@@ -72,7 +73,9 @@ fn ratified_decisions_enforced() {
     }
 
     // Structural ratified decisions — enforced by parser/sema/tests, not constants.
-    const STRUCTURAL_RATIFIED: &[&str] = &["S4", "S12", "S14", "S15", "S21", "S25"];
+    const STRUCTURAL_RATIFIED: &[&str] = &[
+        "S4", "S12", "S14", "S15", "S21", "S25", "S31", "S33",
+    ];
     for id in STRUCTURAL_RATIFIED {
         assert!(
             ratified.contains(*id),

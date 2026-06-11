@@ -88,7 +88,7 @@ expr     = precedence climbing over:
 ### Staged errors
 
 Features that exist in the roadmap but not the language yet fail with an
-error naming the milestone (E0006 `?` → M4, E0117 fields/methods → M3).
+error naming the milestone (E0006 `?` → M4).
 A future feature must never die as a generic syntax error. Teaching
 errors (S14, E0008–E0016) recognize foreign spellings — `def`, `let`,
 `set`, `println`, `and`/`or`/`not`, `Text`, `try`, `use`, `match` — and
@@ -121,9 +121,13 @@ nobody else may be looking at it.* Foreign `read`/`write` spellings get
 teaching errors **E0017**/**E0018** (S14). A `view` return may only hand
 back a parameter, a scalar local, or a const — not fresh text (**E0206**).
 
-## M3 — data & methods (planned; not implemented)
+## M3 — data & methods (done)
 
-Structs and enums carry fields; methods attach behavior (S27).
+Structs and enums carry fields; methods attach behavior (S27). Ratified
+surface (Group 2): struct literals **`Type { f: v }`** (S29); enums with
+**`Type.Variant`** (S30); **`==` pattern tests** (S31); optional
+**`T?`** with **`value(v)`** / **`null`** (S32); generic args
+**`Type[T]`** (S33). `null` is only legal for `T?`, never plain `T`.
 
 ```
 struct Circle {

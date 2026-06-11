@@ -8,8 +8,9 @@
 //! sound without surfacing Rust concepts to users.
 
 use crate::ast::{
-    AccessConvention, BinOp, Binding, Call, ConstAttr, ElseBranch, Expr, IfStmt, Item, Program,
-    RustConstKind, Stmt, StrPart, Type, UnOp,
+    AccessConvention, BinOp, Binding, Call, ConstAttr, ElseBranch, EnumDef, EnumLitArg, Expr,
+    Func, IfStmt, Item, Pattern, Program, RustConstKind, Stmt, StrPart, StructDef, Type, UnOp,
+    VariantPayload,
 };
 use crate::diag::{Diagnostic, Span};
 use crate::syntax;
@@ -21,6 +22,104 @@ pub struct FuncSig {
     pub return_type: Option<Type>,
     #[allow(dead_code)]
     pub is_view_return: bool,
+}
+
+#[derive(Debug, Clone)]
+struct MethodSig {
+    params: Vec<(AccessConvention, Type)>,
+    return_type: Option<Type>,
+    is_view_return: bool,
+    is_static: bool,
+    self_conv: Option<AccessConvention>,
+}
+
+#[derive(Debug, Clone)]
+enum TypeDef {
+    Struct {
+        name_span: Span,
+        fields: Vec<(String, Span, Type, bool)>,
+        methods: HashMap<String, MethodSig>,
+    },
+    Enum {
+        name_span: Span,
+        variants: HashMap<String, (Span, VariantPayload)>,
+        variant_order: Vec<String>,
+        methods: HashMap<String, MethodSig>,
+    },
+}
+
+struct TypeRegistry {
+    types: HashMap<String, TypeDef>,
+}
+
+impl TypeRegistry {
+    fn contains(&self, name: &str) -> bool {
+        self.types.contains_key(name)
+    }
+
+    fn struct_fields(&self, name: &str) -> Option<&[(String, Span, Type, bool)]> {
+        match self.types.get(name) {
+            Some(TypeDef::Struct { fields, .. }) => Some(fields.as_slice()),
+            _ => None,
+        }
+    }
+
+    fn enum_variants(&self, name: &str) -> Option<&HashMap<String, (Span, VariantPayload)>> {
+        match self.types.get(name) {
+            Some(TypeDef::Enum { variants, .. }) => Some(variants),
+            _ => None,
+        }
+    }
+
+    fn enum_variant_order(&self, name: &str) -> Option<&[String]> {
+        match self.types.get(name) {
+            Some(TypeDef::Enum { variant_order, .. }) => Some(variant_order.as_slice()),
+            _ => None,
+        }
+    }
+
+    fn method(&self, type_name: &str, method: &str) -> Option<&MethodSig> {
+        match self.types.get(type_name) {
+            Some(TypeDef::Struct { methods, .. }) | Some(TypeDef::Enum { methods, .. }) => {
+                methods.get(method)
+            }
+            _ => None,
+        }
+    }
+
+    fn field_names(&self, type_name: &str) -> Vec<String> {
+        match self.types.get(type_name) {
+            Some(TypeDef::Struct { fields, .. }) => fields.iter().map(|(n, ..)| n.clone()).collect(),
+            _ => Vec::new(),
+        }
+    }
+}
+
+fn func_to_method_sig(f: &Func) -> MethodSig {
+    let self_param = f.self_param();
+    MethodSig {
+        params: f
+            .params
+            .iter()
+            .map(|p| (p.convention, p.ty.clone()))
+            .collect(),
+        return_type: f.return_type.clone(),
+        is_view_return: f.is_view_return,
+        is_static: self_param.is_none(),
+        self_conv: self_param.map(|p| p.convention),
+    }
+}
+
+fn func_to_sig(f: &Func) -> FuncSig {
+    FuncSig {
+        params: f
+            .params
+            .iter()
+            .map(|p| (p.convention, p.ty.clone()))
+            .collect(),
+        return_type: f.return_type.clone(),
+        is_view_return: f.is_view_return,
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -36,10 +135,14 @@ struct LocalInfo {
 pub fn check(prog: &mut Program) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     let mut funcs: HashMap<String, FuncSig> = HashMap::new();
-    let mut structs: HashMap<String, Vec<(Option<String>, Type)>> = HashMap::new();
+    let mut registry = TypeRegistry {
+        types: HashMap::new(),
+    };
     let mut consts: HashMap<String, Type> = HashMap::new();
+    // Legacy M2 struct map for ref-field checks and cloneable helper.
+    let mut struct_fields_legacy: HashMap<String, Vec<(Option<String>, Type)>> = HashMap::new();
 
-    // --- collect signatures ---------------------------------------------
+    // --- registration pass (M3) -----------------------------------------
     for item in &prog.items {
         match item {
             Item::Func(f) => {
@@ -54,7 +157,7 @@ pub fn check(prog: &mut Program) -> Vec<Diagnostic> {
                         "choose a different name for this function".to_string(),
                         Some(f.name_span),
                     ));
-                } else if funcs.contains_key(&f.name) {
+                } else if name_defined(&f.name, &funcs, &registry, &consts) {
                     diags.push(Diagnostic::error(
                         "E0105",
                         format!("`{}` is defined twice", f.name),
@@ -63,91 +166,28 @@ pub fn check(prog: &mut Program) -> Vec<Diagnostic> {
                         Some(f.name_span),
                     ));
                 } else {
-                    funcs.insert(
-                        f.name.clone(),
-                        FuncSig {
-                            params: f
-                                .params
-                                .iter()
-                                .map(|p| (p.convention, p.ty.clone()))
-                                .collect(),
-                            return_type: f.return_type.clone(),
-                            is_view_return: f.is_view_return,
-                        },
-                    );
+                    funcs.insert(f.name.clone(), func_to_sig(f));
                 }
             }
-            Item::Struct(s) => {
-                if structs.contains_key(&s.name) {
+            Item::Struct(s) => register_struct(s, &mut registry, &mut struct_fields_legacy, &mut diags, &funcs, &consts),
+            Item::Enum(e) => register_enum(e, &mut registry, &mut diags, &funcs, &consts),
+            Item::Impl(i) => {
+                if !registry.contains(&i.type_name) {
                     diags.push(Diagnostic::error(
-                        "E0105",
-                        format!("`{}` is defined twice", s.name),
-                        "every struct needs a unique name".to_string(),
-                        "rename or remove one of the definitions".to_string(),
-                        Some(s.name_span),
+                        "E0301",
+                        format!("`impl {}` names a type that doesn't exist", i.type_name),
+                        format!("`{}` hasn't been defined as a struct or enum", i.type_name),
+                        format!("define `struct {}` or `enum {}` first", i.type_name, i.type_name),
+                        Some(i.type_span),
                     ));
-                } else {
-                    structs.insert(
-                        s.name.clone(),
-                        s.fields
-                            .iter()
-                            .map(|f| (f.stored_ref_label.clone(), f.ty.clone()))
-                            .collect(),
-                    );
-                }
-                let ref_fields: Vec<_> = s.fields.iter().filter(|f| f.is_stored_ref).collect();
-                if ref_fields.len() >= 2 {
-                    let unlabeled = ref_fields
-                        .iter()
-                        .filter(|f| f.stored_ref_label.is_none())
-                        .count();
-                    if unlabeled >= 2 {
-                        diags.push(Diagnostic::error(
-                            "E0207",
-                            "this struct has more than one stored reference without a label"
-                                .to_string(),
-                            "when two `ref` fields may come from different places, each needs a label like `ref[src]`".to_string(),
-                            "add labels: `ref[a] x: String` and `ref[b] y: String`".to_string(),
-                            Some(s.name_span),
-                        ));
-                    }
                 }
             }
-            Item::Const(c) => {
-                if consts.contains_key(&c.name) {
-                    diags.push(Diagnostic::error(
-                        "E0105",
-                        format!("`{}` is defined twice", c.name),
-                        "every const needs a unique name".to_string(),
-                        "rename or remove one of the definitions".to_string(),
-                        Some(c.name_span),
-                    ));
-                } else {
-                    let ty = match &c.value {
-                        Expr::Int(_, _) => Some(Type::Int),
-                        Expr::Float(_, _) => Some(Type::Float),
-                        Expr::Bool(_, _) => Some(Type::Bool),
-                        _ => None,
-                    };
-                    match ty {
-                        Some(t) => {
-                            consts.insert(c.name.clone(), t);
-                        }
-                        None => {
-                            diags.push(Diagnostic::error(
-                                "E0109",
-                                "a const holds a plain number or `true`/`false` for now"
-                                    .to_string(),
-                                "richer const values arrive with later milestones".to_string(),
-                                "give the const a number, like `const LIMIT = 10;`".to_string(),
-                                Some(c.value.span()),
-                            ));
-                        }
-                    }
-                }
-            }
+            Item::Const(c) => register_const(c, &mut consts, &mut diags, &funcs, &registry),
         }
     }
+
+    register_type_methods(prog, &mut registry, &mut diags);
+    register_impl_methods(prog, &mut registry, &mut diags);
 
     match funcs.get("main") {
         None => {
@@ -177,12 +217,27 @@ pub fn check(prog: &mut Program) -> Vec<Diagnostic> {
         }
     }
 
-    // Const address-taken analysis (rule 9, M2 scaffolding).
     let const_names: Vec<String> = consts.keys().cloned().collect();
     let mut address_taken: HashSet<String> = HashSet::new();
     for item in &prog.items {
-        if let Item::Func(f) = item {
-            walk_stmts_for_const_refs(&f.body, &const_names, &mut address_taken);
+        match item {
+            Item::Func(f) => walk_stmts_for_const_refs(&f.body, &const_names, &mut address_taken),
+            Item::Struct(s) => {
+                for m in &s.methods {
+                    walk_stmts_for_const_refs(&m.body, &const_names, &mut address_taken);
+                }
+            }
+            Item::Enum(e) => {
+                for m in &e.methods {
+                    walk_stmts_for_const_refs(&m.body, &const_names, &mut address_taken);
+                }
+            }
+            Item::Impl(i) => {
+                for m in &i.methods {
+                    walk_stmts_for_const_refs(&m.body, &const_names, &mut address_taken);
+                }
+            }
+            _ => {}
         }
     }
     for item in &mut prog.items {
@@ -196,61 +251,386 @@ pub fn check(prog: &mut Program) -> Vec<Diagnostic> {
         }
     }
 
-    // --- per-function checks ----------------------------------------------
+    // --- per-item body checks ---------------------------------------------
     for item in &mut prog.items {
-        if let Item::Func(f) = item {
-            let mut ck = Checker {
-                funcs: &funcs,
-                structs: &structs,
-                consts: &consts,
-                diags: Vec::new(),
-                scopes: vec![HashMap::new()],
-                moved: HashMap::new(),
-                loop_depth: 0,
-                in_unsafe: false,
-                ret: f.return_type.clone(),
-                view_return: f.is_view_return,
-                fn_name: f.name.clone(),
-            };
-            for p in &f.params {
-                ck.check_declared_type(&p.ty, p.ty_span);
-                if ck.lookup(&p.name).is_some() {
-                    ck.diags.push(already_defined(&p.name, p.name_span));
-                } else {
-                    ck.scopes.last_mut().unwrap().insert(
-                        p.name.clone(),
-                        LocalInfo {
-                            ty: p.ty.clone(),
-                            mutable: matches!(p.convention, AccessConvention::Mutate),
-                            param_conv: Some(p.convention),
-                            decl_loop_depth: 0,
-                        },
-                    );
-                }
-            }
-            ck.check_block(&mut f.body, false);
-
-            // Definite return (E0114): a promised value must come back on
-            // every path, or rustc would reject the generated code (I2).
-            if f.return_type.is_some() && !block_definitely_returns(&f.body) {
-                let rt = f.return_type.clone().unwrap();
-                ck.diags.push(Diagnostic::error(
-                    "E0114",
-                    format!(
-                        "`{}` promises to return {}, but a path can reach the end without `return`",
-                        f.name,
-                        rt.show()
-                    ),
-                    "every way through the function must hand back a value".to_string(),
-                    format!("add a final `return ...;`, or an `{}` branch that returns", syntax::KW_ELSE),
-                    Some(f.name_span),
+        match item {
+            Item::Func(f) => {
+                diags.extend(check_func_body(
+                    f,
+                    &funcs,
+                    &registry,
+                    &struct_fields_legacy,
+                    &consts,
+                    None,
                 ));
             }
-            diags.extend(ck.diags);
+            Item::Struct(s) => {
+                for m in &mut s.methods {
+                    diags.extend(check_func_body(
+                        m,
+                        &funcs,
+                        &registry,
+                        &struct_fields_legacy,
+                        &consts,
+                        Some(&s.name),
+                    ));
+                }
+            }
+            Item::Enum(e) => {
+                for m in &mut e.methods {
+                    diags.extend(check_func_body(
+                        m,
+                        &funcs,
+                        &registry,
+                        &struct_fields_legacy,
+                        &consts,
+                        Some(&e.name),
+                    ));
+                }
+            }
+            Item::Impl(i) => {
+                for m in &mut i.methods {
+                    diags.extend(check_func_body(
+                        m,
+                        &funcs,
+                        &registry,
+                        &struct_fields_legacy,
+                        &consts,
+                        Some(&i.type_name),
+                    ));
+                }
+            }
+            _ => {}
         }
     }
 
     diags
+}
+
+fn name_defined(
+    name: &str,
+    funcs: &HashMap<String, FuncSig>,
+    registry: &TypeRegistry,
+    consts: &HashMap<String, Type>,
+) -> bool {
+    funcs.contains_key(name) || registry.contains(name) || consts.contains_key(name)
+}
+
+fn register_const(
+    c: &crate::ast::ConstDef,
+    consts: &mut HashMap<String, Type>,
+    diags: &mut Vec<Diagnostic>,
+    funcs: &HashMap<String, FuncSig>,
+    registry: &TypeRegistry,
+) {
+    if name_defined(&c.name, funcs, registry, consts) {
+        diags.push(Diagnostic::error(
+            "E0105",
+            format!("`{}` is defined twice", c.name),
+            "every const needs a unique name".to_string(),
+            "rename or remove one of the definitions".to_string(),
+            Some(c.name_span),
+        ));
+        return;
+    }
+    let ty = match &c.value {
+        Expr::Int(_, _) => Some(Type::Int),
+        Expr::Float(_, _) => Some(Type::Float),
+        Expr::Bool(_, _) => Some(Type::Bool),
+        _ => None,
+    };
+    match ty {
+        Some(t) => {
+            consts.insert(c.name.clone(), t);
+        }
+        None => {
+            diags.push(Diagnostic::error(
+                "E0109",
+                "a const holds a plain number or `true`/`false` for now".to_string(),
+                "richer const values arrive with later milestones".to_string(),
+                "give the const a number, like `const LIMIT = 10;`".to_string(),
+                Some(c.value.span()),
+            ));
+        }
+    }
+}
+
+fn register_struct(
+    s: &StructDef,
+    registry: &mut TypeRegistry,
+    legacy: &mut HashMap<String, Vec<(Option<String>, Type)>>,
+    diags: &mut Vec<Diagnostic>,
+    funcs: &HashMap<String, FuncSig>,
+    consts: &HashMap<String, Type>,
+) {
+    if name_defined(&s.name, funcs, registry, consts) {
+        diags.push(Diagnostic::error(
+            "E0105",
+            format!("`{}` is defined twice", s.name),
+            "every struct needs a unique name".to_string(),
+            "rename or remove one of the definitions".to_string(),
+            Some(s.name_span),
+        ));
+        return;
+    }
+    let mut field_names = HashSet::new();
+    let mut fields = Vec::new();
+    for f in &s.fields {
+        if !field_names.insert(f.name.clone()) {
+            diags.push(Diagnostic::error(
+                "E0105",
+                format!("field `{}` is defined twice in `{}`", f.name, s.name),
+                "each field name may appear only once".to_string(),
+                "rename or remove the duplicate field".to_string(),
+                Some(f.name_span),
+            ));
+        }
+        fields.push((
+            f.name.clone(),
+            f.name_span,
+            f.ty.clone(),
+            f.is_stored_ref,
+        ));
+    }
+    registry.types.insert(
+        s.name.clone(),
+        TypeDef::Struct {
+            name_span: s.name_span,
+            fields,
+            methods: HashMap::new(),
+        },
+    );
+    legacy.insert(
+        s.name.clone(),
+        s.fields
+            .iter()
+            .map(|f| (f.stored_ref_label.clone(), f.ty.clone()))
+            .collect(),
+    );
+    let ref_fields: Vec<_> = s.fields.iter().filter(|f| f.is_stored_ref).collect();
+    if ref_fields.len() >= 2 {
+        let unlabeled = ref_fields
+            .iter()
+            .filter(|f| f.stored_ref_label.is_none())
+            .count();
+        if unlabeled >= 2 {
+            diags.push(Diagnostic::error(
+                "E0207",
+                "this struct has more than one stored reference without a label".to_string(),
+                "when two `ref` fields may come from different places, each needs a label like `ref[src]`".to_string(),
+                "add labels: `ref[a] x: String` and `ref[b] y: String`".to_string(),
+                Some(s.name_span),
+            ));
+        }
+    }
+}
+
+fn register_enum(
+    e: &EnumDef,
+    registry: &mut TypeRegistry,
+    diags: &mut Vec<Diagnostic>,
+    funcs: &HashMap<String, FuncSig>,
+    consts: &HashMap<String, Type>,
+) {
+    if name_defined(&e.name, funcs, registry, consts) {
+        diags.push(Diagnostic::error(
+            "E0105",
+            format!("`{}` is defined twice", e.name),
+            "every enum needs a unique name".to_string(),
+            "rename or remove one of the definitions".to_string(),
+            Some(e.name_span),
+        ));
+        return;
+    }
+    let mut variants = HashMap::new();
+    let mut variant_order = Vec::new();
+    let mut seen = HashSet::new();
+    for v in &e.variants {
+        if !seen.insert(v.name.clone()) {
+            diags.push(Diagnostic::error(
+                "E0105",
+                format!("variant `{}` is defined twice in `{}`", v.name, e.name),
+                "each variant name may appear only once".to_string(),
+                "rename or remove the duplicate variant".to_string(),
+                Some(v.name_span),
+            ));
+            continue;
+        }
+        variant_order.push(v.name.clone());
+        variants.insert(v.name.clone(), (v.name_span, v.payload.clone()));
+    }
+    registry.types.insert(
+        e.name.clone(),
+        TypeDef::Enum {
+            name_span: e.name_span,
+            variants,
+            variant_order,
+            methods: HashMap::new(),
+        },
+    );
+}
+
+fn register_type_methods(prog: &Program, registry: &mut TypeRegistry, diags: &mut Vec<Diagnostic>) {
+    for item in &prog.items {
+        let (type_name, methods, field_names) = match item {
+            Item::Struct(s) => (
+                s.name.as_str(),
+                &s.methods,
+                registry.field_names(&s.name),
+            ),
+            Item::Enum(e) => (e.name.as_str(), &e.methods, Vec::new()),
+            _ => continue,
+        };
+        let Some(type_def) = registry.types.get_mut(type_name) else {
+            continue;
+        };
+        let methods_map = match type_def {
+            TypeDef::Struct { methods, .. } | TypeDef::Enum { methods, .. } => methods,
+        };
+        for m in methods {
+            if field_names.iter().any(|f| f == &m.name) {
+                diags.push(Diagnostic::error(
+                    "E0105",
+                    format!("method `{}` can't share a name with a field on `{}`", m.name, type_name),
+                    "a type's methods and fields must have different names".to_string(),
+                    "rename the method or the field".to_string(),
+                    Some(m.name_span),
+                ));
+            }
+            if methods_map.contains_key(&m.name) {
+                diags.push(Diagnostic::error(
+                    "E0105",
+                    format!("method `{}` is defined twice on `{}`", m.name, type_name),
+                    "each method name may appear only once on a type".to_string(),
+                    "rename or remove one of the definitions".to_string(),
+                    Some(m.name_span),
+                ));
+            } else {
+                methods_map.insert(m.name.clone(), func_to_method_sig(m));
+            }
+        }
+    }
+}
+
+fn register_impl_methods(prog: &Program, registry: &mut TypeRegistry, diags: &mut Vec<Diagnostic>) {
+    for item in &prog.items {
+        let Item::Impl(i) = item else { continue };
+        if !registry.contains(&i.type_name) {
+            continue;
+        }
+        let field_names = registry.field_names(&i.type_name);
+        let Some(type_def) = registry.types.get_mut(&i.type_name) else {
+            continue;
+        };
+        let methods_map = match type_def {
+            TypeDef::Struct { methods, .. } | TypeDef::Enum { methods, .. } => methods,
+        };
+        for m in &i.methods {
+            if field_names.iter().any(|f| f == &m.name) {
+                diags.push(Diagnostic::error(
+                    "E0105",
+                    format!(
+                        "method `{}` can't share a name with a field on `{}`",
+                        m.name, i.type_name
+                    ),
+                    "a type's methods and fields must have different names".to_string(),
+                    "rename the method or the field".to_string(),
+                    Some(m.name_span),
+                ));
+            }
+            if methods_map.contains_key(&m.name) {
+                diags.push(Diagnostic::error(
+                    "E0105",
+                    format!("method `{}` is defined twice on `{}`", m.name, i.type_name),
+                    "each method name may appear only once on a type".to_string(),
+                    "rename or remove one of the definitions".to_string(),
+                    Some(m.name_span),
+                ));
+            } else {
+                methods_map.insert(m.name.clone(), func_to_method_sig(m));
+            }
+        }
+    }
+}
+
+fn check_func_body(
+    f: &mut Func,
+    funcs: &HashMap<String, FuncSig>,
+    registry: &TypeRegistry,
+    structs: &HashMap<String, Vec<(Option<String>, Type)>>,
+    consts: &HashMap<String, Type>,
+    owner_type: Option<&str>,
+) -> Vec<Diagnostic> {
+    let mut ck = Checker {
+        funcs,
+        registry,
+        structs,
+        consts,
+        diags: Vec::new(),
+        scopes: vec![HashMap::new()],
+        moved: HashMap::new(),
+        loop_depth: 0,
+        in_unsafe: false,
+        ret: f.return_type.clone(),
+        view_return: f.is_view_return,
+        fn_name: f.name.clone(),
+        expected_type: None,
+        owner_type: owner_type.map(str::to_string),
+    };
+    for p in &f.params {
+        let skip_type_check = p.name == syntax::KW_SELF
+            && matches!(&p.ty, Type::Named(n) if n.is_empty());
+        if !skip_type_check {
+            ck.check_declared_type(&p.ty, p.ty_span);
+        }
+        if p.name == syntax::KW_SELF {
+            if let Some(owner) = owner_type {
+                let self_ty = Type::Named(owner.to_string());
+                ck.scopes.last_mut().unwrap().insert(
+                    p.name.clone(),
+                    LocalInfo {
+                        ty: self_ty,
+                        mutable: matches!(p.convention, AccessConvention::Mutate),
+                        param_conv: Some(p.convention),
+                        decl_loop_depth: 0,
+                    },
+                );
+            }
+            continue;
+        }
+        if ck.lookup(&p.name).is_some() {
+            ck.diags.push(already_defined(&p.name, p.name_span));
+        } else {
+            ck.scopes.last_mut().unwrap().insert(
+                p.name.clone(),
+                LocalInfo {
+                    ty: p.ty.clone(),
+                    mutable: matches!(p.convention, AccessConvention::Mutate),
+                    param_conv: Some(p.convention),
+                    decl_loop_depth: 0,
+                },
+            );
+        }
+    }
+    ck.check_block(&mut f.body, false);
+    if f.return_type.is_some() && !block_definitely_returns(&f.body) {
+        let rt = f.return_type.clone().unwrap();
+        ck.diags.push(Diagnostic::error(
+            "E0114",
+            format!(
+                "`{}` promises to return {}, but a path can reach the end without `return`",
+                f.name,
+                rt.show()
+            ),
+            "every way through the function must hand back a value".to_string(),
+            format!(
+                "add a final `return ...;`, or an `{}` branch that returns",
+                syntax::KW_ELSE
+            ),
+            Some(f.name_span),
+        ));
+    }
+    ck.diags
 }
 
 fn already_defined(name: &str, span: Span) -> Diagnostic {
@@ -268,6 +648,7 @@ fn already_defined(name: &str, span: Span) -> Diagnostic {
 
 struct Checker<'a> {
     funcs: &'a HashMap<String, FuncSig>,
+    registry: &'a TypeRegistry,
     structs: &'a HashMap<String, Vec<(Option<String>, Type)>>,
     consts: &'a HashMap<String, Type>,
     diags: Vec<Diagnostic>,
@@ -280,6 +661,10 @@ struct Checker<'a> {
     /// `-> view T` on this function (borrowed return).
     view_return: bool,
     fn_name: String,
+    /// Context type for bare `null` (E0308).
+    expected_type: Option<Type>,
+    /// Enclosing type when checking a method body.
+    owner_type: Option<String>,
 }
 
 impl<'a> Checker<'a> {
@@ -300,24 +685,82 @@ impl<'a> Checker<'a> {
 
     fn check_declared_type(&mut self, ty: &Type, span: Span) {
         match ty {
-            Type::Named(n) if !self.structs.contains_key(n) => {
+            Type::Named(n) if !self.registry.contains(n) => {
                 self.diags.push(Diagnostic::error(
                     "E0119",
                     format!("there's no type called `{}`", n),
                     format!(
-                        "the types are `{}`, `{}`, `{}`, and `{}` (plus structs you define)",
+                        "the types are `{}`, `{}`, `{}`, and `{}` (plus types you define)",
                         syntax::TYPE_INT,
                         syntax::TYPE_FLOAT,
                         syntax::TYPE_BOOL,
                         syntax::TYPE_STRING
                     ),
-                    "check the spelling, or define the struct first".to_string(),
+                    "check the spelling, or define the struct or enum first".to_string(),
                     Some(span),
                 ));
+            }
+            Type::Option(inner) => {
+                if matches!(**inner, Type::Option(_)) {
+                    self.diags.push(Diagnostic::error(
+                        "E0309",
+                        "an optional type can't hold another optional type".to_string(),
+                        format!("`{}??` isn't supported — use one `?` only (S32)", inner.name()),
+                        "drop the inner `?` or unwrap before wrapping again".to_string(),
+                        Some(span),
+                    ));
+                }
+                self.check_declared_type(inner, span);
             }
             Type::List(inner) | Type::Shared(inner) => self.check_declared_type(inner, span),
             _ => {}
         }
+    }
+
+    fn type_known(&self, ty: &Type) -> bool {
+        match ty {
+            Type::Named(n) => self.registry.contains(n),
+            Type::Option(inner) | Type::List(inner) | Type::Shared(inner) => self.type_known(inner),
+            _ => true,
+        }
+    }
+
+    fn check_type_assignable(&mut self, want: &Type, got: &Type, span: Span) {
+        if want == got {
+            return;
+        }
+        if let Type::Option(inner) = got {
+            if **inner != *want {
+                self.report_option_mismatch(want, got, span);
+            }
+            return;
+        }
+        if want.unwrap_option().is_some() && got.unwrap_option().is_none() {
+            self.diags.push(Diagnostic::error(
+                "E0310",
+                format!("this needs {}, but the value is {}", want.show(), got.show()),
+                "a plain value can't stand in for an optional one".to_string(),
+                format!(
+                    "wrap it with `{}(...)`, or test with `==` first",
+                    syntax::LIT_VALUE
+                ),
+                Some(span),
+            ));
+        }
+    }
+
+    fn report_option_mismatch(&mut self, want: &Type, got: &Type, span: Span) {
+        self.diags.push(Diagnostic::error(
+            "E0108",
+            format!(
+                "this needs {}, but the value is {}",
+                want.show(),
+                got.show()
+            ),
+            "the types must match".to_string(),
+            type_fix_hint(want, got),
+            Some(span),
+        ));
     }
 
     // --- statements -----------------------------------------------------
@@ -449,16 +892,19 @@ impl<'a> Checker<'a> {
             Stmt::Expr(expr) => {
                 if let Expr::Call(call) = expr {
                     self.check_call(call, false);
+                } else if let Expr::MethodCall { .. } = expr {
+                    self.infer(expr);
                 } else {
-                    // Member-call statement, e.g. `x.clone();` — checked as
-                    // an expression; the value is dropped.
                     self.infer(expr);
                 }
             }
             Stmt::Return(expr, span) => {
                 match (&mut *expr, self.ret.clone()) {
                     (Some(e), Some(rt)) => {
+                        let saved_expected = self.expected_type.clone();
+                        self.expected_type = Some(rt.clone());
                         let et = self.infer(e);
+                        self.expected_type = saved_expected;
                         // Returning a borrowed parameter would move out of a
                         // borrow in the generated Rust (I2) — require a copy.
                         if let Expr::Ident(n, nspan) = &*e {
@@ -610,19 +1056,8 @@ impl<'a> Checker<'a> {
                 subject,
                 arms,
                 else_body,
-                span: _,
-            } => {
-                self.infer(subject);
-                for arm in arms.iter_mut() {
-                    self.require_bool(&mut arm.cond, "a `switch` arm's condition");
-                }
-                let mut branches: Vec<&mut Vec<Stmt>> = Vec::new();
-                for arm in arms.iter_mut() {
-                    branches.push(&mut arm.body);
-                }
-                branches.push(else_body);
-                self.check_branches(&mut branches);
-            }
+                span,
+            } => self.check_switch(subject, arms, else_body, *span),
             Stmt::Break(span) => {
                 if self.loop_depth == 0 {
                     self.diags.push(loop_control_outside(syntax::KW_BREAK, *span));
@@ -649,60 +1084,177 @@ impl<'a> Checker<'a> {
     }
 
     fn check_if(&mut self, ifs: &mut IfStmt) {
-        self.require_bool(&mut ifs.cond, "an `if` condition");
+        let before = self.moved.clone();
+        let mut after = before.clone();
+        let bindings = self.check_condition_with_bindings(&mut ifs.cond);
+        self.scopes.push(HashMap::new());
+        for (name, ty) in bindings {
+            self.declare(
+                &name,
+                ifs.span,
+                LocalInfo {
+                    ty,
+                    mutable: false,
+                    param_conv: None,
+                    decl_loop_depth: self.loop_depth,
+                },
+            );
+        }
+        self.check_block(&mut ifs.then_body, false);
+        self.scopes.pop();
+        for (k, v) in self.moved.drain() {
+            after.entry(k).or_insert(v);
+        }
+        self.moved = before.clone();
         match &mut ifs.else_branch {
-            None => {
-                let before = self.moved.clone();
-                let mut after = before.clone();
-                self.check_block(&mut ifs.then_body, true);
-                for (k, v) in self.moved.drain() {
-                    after.entry(k).or_insert(v);
-                }
-                self.moved = after;
-            }
+            None => {}
             Some(ElseBranch::Else(else_body)) => {
-                let before = self.moved.clone();
-                let mut after = before.clone();
-                self.check_block(&mut ifs.then_body, true);
-                for (k, v) in self.moved.drain() {
-                    after.entry(k).or_insert(v);
-                }
-                self.moved = before.clone();
                 self.check_block(else_body, true);
                 for (k, v) in self.moved.drain() {
                     after.entry(k).or_insert(v);
                 }
-                self.moved = after;
             }
             Some(ElseBranch::ElseIf(next)) => {
-                let before = self.moved.clone();
-                let mut after = before.clone();
-                self.check_block(&mut ifs.then_body, true);
-                for (k, v) in self.moved.drain() {
-                    after.entry(k).or_insert(v);
-                }
-                self.moved = before;
                 self.check_if(next);
                 for (k, v) in self.moved.drain() {
                     after.entry(k).or_insert(v);
                 }
-                self.moved = after;
+            }
+        }
+        self.moved = after;
+    }
+
+    fn check_condition_with_bindings(&mut self, cond: &mut Expr) -> HashMap<String, Type> {
+        match cond {
+            Expr::PatternTest { subject, pattern, span } => {
+                self.check_pattern_test(subject, pattern, *span)
+            }
+            Expr::Binary(BinOp::And, l, r, _) => {
+                let left_bindings = self.check_condition_with_bindings(l);
+                let mut right_bindings = self.check_condition_with_bindings(r);
+                left_bindings.into_iter().for_each(|(k, v)| {
+                    right_bindings.entry(k).or_insert(v);
+                });
+                right_bindings
+            }
+            _ => {
+                self.require_bool(cond, "a condition");
+                HashMap::new()
             }
         }
     }
 
+    fn check_switch(
+        &mut self,
+        subject: &mut Expr,
+        arms: &mut [crate::ast::SwitchArm],
+        else_body: &mut Option<Vec<Stmt>>,
+        span: Span,
+    ) {
+        let subj_ty = self.infer(subject);
+        let subj_name = match &*subject {
+            Expr::Ident(n, _) => Some(n.clone()),
+            _ => None,
+        };
+        let all_pattern = !arms.is_empty()
+            && arms.iter().all(|a| {
+                matches!(
+                    &a.cond,
+                    Expr::PatternTest { subject: s, .. }
+                        if subj_name.as_ref().is_some_and(|n| expr_is_same_ident(s, n))
+                )
+            });
+        let mut covered = HashSet::new();
+        let mut branches: Vec<&mut Vec<Stmt>> = Vec::new();
+        for arm in arms.iter_mut() {
+            if all_pattern {
+                if let Expr::PatternTest {
+                    pattern,
+                    span: pspan,
+                    ..
+                } = &arm.cond
+                {
+                    if let Some(ref st) = subj_ty {
+                        if let Some(variant) = pattern_variant_name(pattern) {
+                            if covered.contains(&variant) {
+                                self.diags.push(Diagnostic::lint(
+                                    "L0301",
+                                    format!("arm `{}` is unreachable — that case is already handled", variant),
+                                    "every earlier arm already covers this pattern".to_string(),
+                                    "remove this arm or merge it with the one above".to_string(),
+                                    Some(*pspan),
+                                ));
+                            } else {
+                                covered.insert(variant);
+                            }
+                        }
+                        let bindings = self.validate_pattern(st, pattern, *pspan);
+                        self.scopes.push(HashMap::new());
+                        for (name, ty) in bindings {
+                            self.declare(
+                                &name,
+                                *pspan,
+                                LocalInfo {
+                                    ty,
+                                    mutable: false,
+                                    param_conv: None,
+                                    decl_loop_depth: self.loop_depth,
+                                },
+                            );
+                        }
+                        self.check_block(&mut arm.body, false);
+                        self.scopes.pop();
+                        branches.push(&mut arm.body);
+                        continue;
+                    }
+                }
+            }
+            self.require_bool(&mut arm.cond, "a `switch` arm's condition");
+            self.check_block(&mut arm.body, true);
+            branches.push(&mut arm.body);
+        }
+        if all_pattern {
+            if let Some(st) = subj_ty {
+                if let Some(missing) = missing_pattern_coverage(&st, &covered, self.registry) {
+                    if else_body.is_none() {
+                        self.diags.push(Diagnostic::error(
+                            "E0307",
+                            format!("`switch` doesn't cover every case — missing: {}", missing.join(", ")),
+                            "when every arm is a pattern test, each variant must appear once".to_string(),
+                            format!("add an arm for: {}", missing.join(", ")),
+                            Some(span),
+                        ));
+                    }
+                }
+            }
+        } else if else_body.is_none() {
+            self.diags.push(Diagnostic::error(
+                "E0003",
+                "this `switch` needs an `else` branch".to_string(),
+                "mixed condition arms (or non-pattern arms) must always have a fallback (S24)".to_string(),
+                format!("add `{} {{ ... }};` after the last arm", syntax::KW_ELSE),
+                Some(span),
+            ));
+        }
+        if let Some(body) = else_body {
+            branches.push(body);
+        }
+        self.check_branches(&mut branches);
+    }
+
     fn check_binding(&mut self, b: &mut Binding) {
         let mut annot_valid = true;
+        let saved_expected = self.expected_type.clone();
         if let (Some(ty), Some(span)) = (&b.ty, b.ty_span) {
             let t = ty.clone();
+            self.expected_type = Some(t.clone());
             self.check_declared_type(&t, span);
-            if matches!(&t, Type::Named(n) if !self.structs.contains_key(n)) {
-                // The annotation doesn't name a real type; fall back to the
-                // value's own type to avoid a cascade of follow-up errors.
+            if matches!(&t, Type::Named(n) if !self.registry.contains(n)) {
                 annot_valid = false;
             }
         }
         let it = self.infer(&mut b.init);
+        self.expected_type = saved_expected;
 
         // `val a = b;` moves `b` when the type isn't a scalar (M2 model:
         // assignment moves). Borrowed parameters can't be moved at all.
@@ -870,15 +1422,11 @@ impl<'a> Checker<'a> {
                     if let StrPart::Interp(inner) = p {
                         let t = self.infer(inner);
                         if let Some(t) = t {
-                            if !matches!(
-                                t,
-                                Type::Int | Type::Float | Type::Bool | Type::String
-                            ) {
+                            if !is_printable(&t, self.registry) {
                                 self.diags.push(Diagnostic::error(
                                     "E0112",
                                     format!("{} can't be put into text yet", t.show()),
-                                    "interpolation shows Int, Float, Bool, and String values"
-                                        .to_string(),
+                                    "interpolation shows printable values".to_string(),
                                     "show one of its parts instead".to_string(),
                                     Some(inner.span()),
                                 ));
@@ -984,22 +1532,625 @@ impl<'a> Checker<'a> {
                 }
                 self.infer(inner)
             }
-            Expr::Member(inner, member, span) => {
-                let t = self.infer(inner);
-                if member == "clone" {
-                    t
+            Expr::Field(inner, member, span) => self.infer_field(inner, member, *span),
+            Expr::MethodCall {
+                receiver,
+                method,
+                method_span,
+                args,
+            } => self.infer_method_call(receiver, method, *method_span, args),
+            Expr::StructLit {
+                type_name,
+                fields,
+                span,
+            } => Some(self.check_struct_lit(type_name, fields, *span)),
+            Expr::EnumLit {
+                type_name,
+                variant,
+                args,
+                span,
+            } => Some(self.check_enum_lit(type_name, variant, args, *span)),
+            Expr::Present(inner, span) => {
+                let t = self.infer(inner)?;
+                Some(Type::Option(Box::new(t)))
+            }
+            Expr::Absent(span) => {
+                if let Some(expected) = self.expected_type.clone() {
+                    if expected.unwrap_option().is_some() {
+                        Some(expected)
+                    } else {
+                        self.diags.push(Diagnostic::error(
+                            "E0308",
+                            "bare `null` needs a known optional type here".to_string(),
+                            format!("`{}` only fits where a `T?` is expected (S32)", syntax::LIT_NULL),
+                            "add a type annotation, or use `null` where the type is already known".to_string(),
+                            Some(*span),
+                        ));
+                        None
+                    }
                 } else {
                     self.diags.push(Diagnostic::error(
-                        "E0117",
-                        format!("`.{}` doesn't exist yet", member),
-                        "fields and methods arrive in M3; today the only one is `.clone()`"
-                            .to_string(),
-                        format!("remove `.{}` for now", member),
+                        "E0308",
+                        "bare `null` needs a known optional type here".to_string(),
+                        format!("`{}` only fits where a `T?` is expected (S32)", syntax::LIT_NULL),
+                        "add a type annotation, or use `null` where the type is already known".to_string(),
                         Some(*span),
                     ));
                     None
                 }
             }
+            Expr::PatternTest {
+                subject,
+                pattern,
+                span,
+            } => {
+                self.check_pattern_test(subject, pattern, *span);
+                Some(Type::Bool)
+            }
+        }
+    }
+
+    fn infer_field(&mut self, inner: &mut Box<Expr>, member: &str, span: Span) -> Option<Type> {
+        if member == "clone" {
+            return self.infer(inner);
+        }
+        if let Expr::Ident(type_name, _) = &**inner {
+            if self.registry.enum_variants(type_name).is_some() {
+                let mut empty = Vec::new();
+                return Some(self.check_enum_lit(type_name, member, &mut empty, span));
+            }
+        }
+        let t = self.infer(inner)?;
+        if let Type::Named(type_name) = &t {
+            if self.registry.contains(type_name) {
+                if let Some(fields) = self.registry.struct_fields(type_name) {
+                    for (fname, _, fty, is_ref) in fields {
+                        if fname == member {
+                            if *is_ref {
+                                return None;
+                            }
+                            return Some(fty.clone());
+                        }
+                    }
+                    let mut fix = format!("check the field names on `{}`", type_name);
+                    if let Some(suggest) = suggest_field(member, &self.registry.field_names(type_name)) {
+                        fix = format!("did you mean `{}`?", suggest);
+                    }
+                    self.diags.push(Diagnostic::error(
+                        "E0302",
+                        format!("`{}` has no field `{}`", type_name, member),
+                        "field access only works on names declared in the struct".to_string(),
+                        fix,
+                        Some(span),
+                    ));
+                    return None;
+                }
+            }
+        }
+        self.diags.push(Diagnostic::error(
+            "E0302",
+            format!("`.{}` only works on struct values", member),
+            "enums and other values use methods or pattern tests instead".to_string(),
+            format!("use a struct value before `.{}`", member),
+            Some(span),
+        ));
+        None
+    }
+
+    fn infer_method_call(
+        &mut self,
+        receiver: &mut Box<Expr>,
+        method: &str,
+        span: Span,
+        args: &mut [crate::ast::CallArg],
+    ) -> Option<Type> {
+        if method == "clone" {
+            return self.infer(receiver);
+        }
+        if let Expr::Ident(type_name, _) = &**receiver {
+            if let Some(variants) = self.registry.enum_variants(type_name) {
+                if variants.contains_key(method) {
+                    let saved: Vec<Expr> = args
+                        .iter_mut()
+                        .map(|a| {
+                            std::mem::replace(&mut a.expr, Expr::Int(0, a.span))
+                        })
+                        .collect();
+                    let mut enum_args: Vec<EnumLitArg> = saved
+                        .into_iter()
+                        .map(EnumLitArg::Positional)
+                        .collect();
+                    let ty = self.check_enum_lit(type_name, method, &mut enum_args, span);
+                    for (a, ea) in args.iter_mut().zip(enum_args) {
+                        if let EnumLitArg::Positional(e) = ea {
+                            a.expr = e;
+                        }
+                    }
+                    return Some(ty);
+                }
+            }
+            if self.registry.method(type_name, method).is_some() {
+                return self.check_static_method(type_name, method, span, args);
+            }
+        }
+        let recv_ty = self.infer(receiver)?;
+        let type_name = match &recv_ty {
+            Type::Named(n) => n.clone(),
+            Type::Option(inner) => match inner.as_ref() {
+                Type::Named(n) => n.clone(),
+                _ => {
+                    self.diags.push(Diagnostic::error(
+                        "E0311",
+                        format!("`{}` isn't a method on this value", method),
+                        "instance methods belong to struct or enum values".to_string(),
+                        format!("call it on the type: `{}.{method}(...)` if it's static", recv_ty.name()),
+                        Some(span),
+                    ));
+                    for a in args.iter_mut() {
+                        self.infer(&mut a.expr);
+                    }
+                    return None;
+                }
+            },
+            _ => {
+                self.diags.push(Diagnostic::error(
+                    "E0311",
+                    format!("`{}` isn't a method on this value", method),
+                    "only struct and enum values have instance methods".to_string(),
+                    format!("check the spelling of `{}`", method),
+                    Some(span),
+                ));
+                for a in args.iter_mut() {
+                    self.infer(&mut a.expr);
+                }
+                return None;
+            }
+        };
+        let Some(msig) = self.registry.method(&type_name, method).cloned() else {
+            self.diags.push(Diagnostic::error(
+                "E0102",
+                format!("`{}` has no method `{}`", type_name, method),
+                "check the method name on this type".to_string(),
+                format!("define it inside `struct {type_name}` or `impl {type_name}`"),
+                Some(span),
+            ));
+            for a in args.iter_mut() {
+                self.infer(&mut a.expr);
+            }
+            return None;
+        };
+        if msig.is_static {
+            self.diags.push(Diagnostic::error(
+                "E0311",
+                format!("`{}` is a static method on `{}`", method, type_name),
+                "static methods belong to the type name, not a value".to_string(),
+                format!("write `{}.{method}(...)` instead", type_name),
+                Some(span),
+            ));
+        }
+        if msig.self_conv == Some(AccessConvention::Move) {
+            if let Expr::Ident(n, nspan) = &**receiver {
+                self.mark_moved(n.clone(), *nspan);
+            }
+        }
+        self.check_method_args(&type_name, method, &msig, args, span)?;
+        msig.return_type.clone()
+    }
+
+    fn check_static_method(
+        &mut self,
+        type_name: &str,
+        method: &str,
+        span: Span,
+        args: &mut [crate::ast::CallArg],
+    ) -> Option<Type> {
+        let Some(msig) = self.registry.method(type_name, method).cloned() else {
+            self.diags.push(Diagnostic::error(
+                "E0102",
+                format!("`{}` has no method `{}`", type_name, method),
+                "check the method name on this type".to_string(),
+                format!("define it inside `struct {type_name}` or `impl {type_name}`"),
+                Some(span),
+            ));
+            for a in args.iter_mut() {
+                self.infer(&mut a.expr);
+            }
+            return None;
+        };
+        if !msig.is_static {
+            self.diags.push(Diagnostic::error(
+                "E0311",
+                format!("`{}` is an instance method on `{}`", method, type_name),
+                "instance methods need a value before the dot".to_string(),
+                format!("call it on a `{type_name}` value: `x.{method}(...)`"),
+                Some(span),
+            ));
+        }
+        self.check_method_args(type_name, method, &msig, args, span)
+    }
+
+    fn check_method_args(
+        &mut self,
+        type_name: &str,
+        method: &str,
+        sig: &MethodSig,
+        args: &mut [crate::ast::CallArg],
+        span: Span,
+    ) -> Option<Type> {
+        let _ = (type_name, method, span);
+        let expected_args = if sig.self_conv.is_some() {
+            sig.params.len().saturating_sub(1)
+        } else {
+            sig.params.len()
+        };
+        if args.len() != expected_args {
+            self.diags.push(Diagnostic::error(
+                "E0104",
+                format!(
+                    "`{}` expects {} argument{}, got {}",
+                    method,
+                    expected_args,
+                    if expected_args == 1 { "" } else { "s" },
+                    args.len()
+                ),
+                if sig.self_conv.is_some() {
+                    "every argument must match a parameter (not counting `self`)".to_string()
+                } else {
+                    "every argument must match a parameter".to_string()
+                },
+                format!("check the definition of `{method}` on `{type_name}`"),
+                Some(span),
+            ));
+        }
+        let mut arg_idx = 0;
+        for (i, (param_conv, param_ty)) in sig.params.iter().enumerate() {
+            if i == 0 && sig.self_conv.is_some() {
+                continue;
+            }
+            if let Some(arg) = args.get_mut(arg_idx) {
+                let arg_ty = self.infer(&mut arg.expr);
+                if let Some(arg_ty) = arg_ty {
+                    self.check_type_assignable(param_ty, &arg_ty, arg.expr.span());
+                    if arg_ty != *param_ty && !matches!(param_ty, Type::Named(_)) {
+                        self.diags.push(Diagnostic::error(
+                            "E0112",
+                            format!(
+                                "`{}` wants {} for argument {}, but this is {}",
+                                method,
+                                param_ty.show(),
+                                arg_idx + 1,
+                                arg_ty.show()
+                            ),
+                            "every argument must match its parameter's type".to_string(),
+                            type_fix_hint(param_ty, &arg_ty),
+                            Some(arg.expr.span()),
+                        ));
+                    }
+                }
+                match (param_conv, arg.convention) {
+                    (AccessConvention::Mutate, AccessConvention::Read) => {
+                        if let Expr::Ident(name, nspan) = &arg.expr {
+                            self.diags.push(Diagnostic::error(
+                                "E0202",
+                                format!("parameter `{}` requires `{}` at the call site", name, syntax::KW_MUTATE),
+                                format!("`{method}` needs to change this value while it borrows it"),
+                                format!("write `{} {}` when calling `{method}`", syntax::KW_MUTATE, name),
+                                Some(*nspan),
+                            ));
+                        }
+                    }
+                    _ => {}
+                }
+                arg_idx += 1;
+            }
+        }
+        sig.return_type.clone()
+    }
+
+    fn check_struct_lit(
+        &mut self,
+        type_name: &str,
+        fields: &mut [(String, Span, Expr)],
+        span: Span,
+    ) -> Type {
+        let Some(def_fields) = self.registry.struct_fields(type_name) else {
+            self.diags.push(Diagnostic::error(
+                "E0119",
+                format!("there's no type called `{}`", type_name),
+                "struct literals need a struct type name".to_string(),
+                "define the struct first, or check the spelling".to_string(),
+                Some(span),
+            ));
+            for (_, _, e) in fields.iter_mut() {
+                self.infer(e);
+            }
+            return Type::Named(type_name.to_string());
+        };
+        let mut provided = HashMap::new();
+        for (name, name_span, expr) in fields.iter_mut() {
+            if provided.insert(name.clone(), ()).is_some() {
+                self.diags.push(Diagnostic::error(
+                    "E0303",
+                    format!("field `{}` appears more than once", name),
+                    "each field may be written only once in a struct literal".to_string(),
+                    "remove the duplicate field".to_string(),
+                    Some(*name_span),
+                ));
+            }
+            let et = self.infer(expr);
+            if let Some((_, _, fty, _)) = def_fields.iter().find(|(n, ..)| n == name) {
+                if let Some(et) = et {
+                    self.check_type_assignable(fty, &et, expr.span());
+                }
+            } else {
+                self.diags.push(Diagnostic::error(
+                    "E0302",
+                    format!("`{}` has no field `{}`", type_name, name),
+                    "struct literals may only set fields that exist on the type".to_string(),
+                    suggest_field(name, &self.registry.field_names(type_name))
+                        .map(|s| format!("did you mean `{}`?", s))
+                        .unwrap_or_else(|| "remove this field".to_string()),
+                    Some(*name_span),
+                ));
+            }
+        }
+        let missing: Vec<_> = def_fields
+            .iter()
+            .filter(|(n, _, _, is_ref)| !*is_ref && !provided.contains_key(n))
+            .map(|(n, ..)| n.clone())
+            .collect();
+        if !missing.is_empty() {
+            self.diags.push(Diagnostic::error(
+                "E0303",
+                format!("struct literal for `{}` is missing fields: {}", type_name, missing.join(", ")),
+                "every non-`ref` field must appear exactly once".to_string(),
+                format!("add: {}", missing.join(", ")),
+                Some(span),
+            ));
+        }
+        Type::Named(type_name.to_string())
+    }
+
+    fn check_enum_lit(
+        &mut self,
+        type_name: &str,
+        variant: &str,
+        args: &mut [EnumLitArg],
+        span: Span,
+    ) -> Type {
+        let ty = Type::Named(type_name.to_string());
+        let Some(variants) = self.registry.enum_variants(type_name) else {
+            self.diags.push(Diagnostic::error(
+                "E0119",
+                format!("there's no enum called `{}`", type_name),
+                "enum literals need an enum type name".to_string(),
+                "define the enum first, or check the spelling".to_string(),
+                Some(span),
+            ));
+            for a in args.iter_mut() {
+                match a {
+                    EnumLitArg::Positional(e) | EnumLitArg::Named { expr: e, .. } => {
+                        self.infer(e);
+                    }
+                }
+            }
+            return ty;
+        };
+        let Some((_, payload)) = variants.get(variant) else {
+            let mut fix = "check the variant name".to_string();
+            if let Some(s) = suggest_field(variant, &variants.keys().cloned().collect::<Vec<_>>()) {
+                fix = format!("did you mean `{}`?", s);
+            }
+            self.diags.push(Diagnostic::error(
+                "E0304",
+                format!("`{}` has no variant `{}`", type_name, variant),
+                "enum literals must name a variant on the type".to_string(),
+                fix,
+                Some(span),
+            ));
+            for a in args.iter_mut() {
+                match a {
+                    EnumLitArg::Positional(e) | EnumLitArg::Named { expr: e, .. } => {
+                        self.infer(e);
+                    }
+                }
+            }
+            return ty;
+        };
+        match payload {
+            VariantPayload::Unit => {
+                if !args.is_empty() {
+                    self.diags.push(Diagnostic::error(
+                        "E0303",
+                        format!("variant `{}` takes no payload", variant),
+                        "unit variants are written without parentheses".to_string(),
+                        format!("write `{type_name}.{variant}` with no `(...)`"),
+                        Some(span),
+                    ));
+                }
+            }
+            VariantPayload::Single(expected, _) => {
+                if args.len() != 1 {
+                    self.diags.push(Diagnostic::error(
+                        "E0303",
+                        format!("variant `{}` expects one value", variant),
+                        "single-payload variants take one positional argument (S30)".to_string(),
+                        format!("write `{type_name}.{variant}(...)`"),
+                        Some(span),
+                    ));
+                }
+                if let Some(EnumLitArg::Positional(e)) = args.first_mut() {
+                    if let Some(et) = self.infer(e) {
+                        self.check_type_assignable(expected, &et, e.span());
+                    }
+                } else if let Some(EnumLitArg::Named { label, .. }) = args.first() {
+                    self.diags.push(Diagnostic::error(
+                        "E0303",
+                        format!("variant `{}` expects a positional value, not `{}:`", variant, label),
+                        "single-payload variants use positional args only (S30)".to_string(),
+                        format!("write `{type_name}.{variant}(value)`"),
+                        Some(span),
+                    ));
+                }
+            }
+            VariantPayload::Named(fields) => {
+                let mut seen = HashSet::new();
+                for a in args.iter_mut() {
+                    match a {
+                        EnumLitArg::Positional(_) => {
+                            self.diags.push(Diagnostic::error(
+                                "E0303",
+                                format!("variant `{}` requires labeled fields", variant),
+                                "multi-payload variants need `name: value` at the call site (S30)".to_string(),
+                                format!("write `{type_name}.{variant}(w: 1.0, h: 2.0)`"),
+                                Some(span),
+                            ));
+                        }
+                        EnumLitArg::Named { label, expr } => {
+                            if !seen.insert(label.clone()) {
+                                self.diags.push(Diagnostic::error(
+                                    "E0303",
+                                    format!("field `{}` appears more than once", label),
+                                    "each payload field may be written only once".to_string(),
+                                    "remove the duplicate label".to_string(),
+                                    Some(expr.span()),
+                                ));
+                            }
+                            let et = self.infer(expr);
+                            if let Some(f) = fields.iter().find(|f| f.name == *label) {
+                                if let Some(et) = et {
+                                    self.check_type_assignable(&f.ty, &et, expr.span());
+                                }
+                            } else {
+                                self.diags.push(Diagnostic::error(
+                                    "E0302",
+                                    format!("variant `{}` has no field `{}`", variant, label),
+                                    "check the field names on this variant".to_string(),
+                                    suggest_field(
+                                        label,
+                                        &fields.iter().map(|f| f.name.clone()).collect::<Vec<_>>(),
+                                    )
+                                        .map(|s| format!("did you mean `{}`?", s))
+                                        .unwrap_or_else(|| "remove this label".to_string()),
+                                    Some(expr.span()),
+                                ));
+                            }
+                        }
+                    }
+                }
+                let missing: Vec<_> = fields
+                    .iter()
+                    .filter(|f| !seen.contains(&f.name))
+                    .map(|f| f.name.clone())
+                    .collect();
+                if !missing.is_empty() {
+                    self.diags.push(Diagnostic::error(
+                        "E0303",
+                        format!("variant `{}` is missing fields: {}", variant, missing.join(", ")),
+                        "every payload field must appear exactly once".to_string(),
+                        format!("add: {}", missing.join(", ")),
+                        Some(span),
+                    ));
+                }
+            }
+        }
+        ty
+    }
+
+    fn check_pattern_test(
+        &mut self,
+        subject: &mut Box<Expr>,
+        pattern: &Pattern,
+        span: Span,
+    ) -> HashMap<String, Type> {
+        let subj_ty = self.infer(subject);
+        let Some(st) = subj_ty else {
+            return HashMap::new();
+        };
+        self.validate_pattern(&st, pattern, span)
+    }
+
+    fn validate_pattern(
+        &mut self,
+        subject_ty: &Type,
+        pattern: &Pattern,
+        span: Span,
+    ) -> HashMap<String, Type> {
+        match (subject_ty, pattern) {
+            (Type::Option(inner), Pattern::Present { binding, .. }) => {
+                let mut map = HashMap::new();
+                map.insert(binding.clone(), (**inner).clone());
+                map
+            }
+            (Type::Option(_), Pattern::Absent(_)) => HashMap::new(),
+            (Type::Named(enum_name), Pattern::Variant { variant, bindings, .. }) => {
+                let Some(variants) = self.registry.enum_variants(enum_name) else {
+                    self.diags.push(Diagnostic::error(
+                        "E0305",
+                        format!("pattern `{}` doesn't match this value's type", variant),
+                        format!("`{}` is a struct, not an enum", enum_name),
+                        "use a struct field access instead of a variant pattern".to_string(),
+                        Some(span),
+                    ));
+                    return HashMap::new();
+                };
+                let Some((_, payload)) = variants.get(variant) else {
+                    self.diags.push(Diagnostic::error(
+                        "E0305",
+                        format!("pattern `{}` doesn't belong to `{}`", variant, enum_name),
+                        "pattern tests must name a variant on the value's enum type".to_string(),
+                        "check the variant spelling".to_string(),
+                        Some(span),
+                    ));
+                    return HashMap::new();
+                };
+                let expected = pattern_binding_types(payload);
+                if bindings.len() != expected.len() {
+                    self.diags.push(Diagnostic::error(
+                        "E0306",
+                        format!(
+                            "pattern `{}` expects {} binding{}, got {}",
+                            variant,
+                            expected.len(),
+                            if expected.len() == 1 { "" } else { "s" },
+                            bindings.len()
+                        ),
+                        "each payload field needs its own binding name".to_string(),
+                        format!("write `{}({})", variant, (0..expected.len()).map(|i| format!("v{i}")).collect::<Vec<_>>().join(", ")),
+                        Some(span),
+                    ));
+                }
+                bindings
+                    .iter()
+                    .zip(expected.iter())
+                    .map(|(b, t)| (b.clone(), t.clone()))
+                    .collect()
+            }
+            (_, Pattern::Variant { variant, .. }) => {
+                self.diags.push(Diagnostic::error(
+                    "E0305",
+                    format!("pattern `{}` doesn't match {}", variant, subject_ty.show()),
+                    "variant patterns only work on enum values".to_string(),
+                    format!("test an enum value, or use `{}` / `{}` for optionals", syntax::LIT_VALUE, syntax::LIT_NULL),
+                    Some(span),
+                ));
+                HashMap::new()
+            }
+            (Type::Named(_), Pattern::Present { .. } | Pattern::Absent(_)) => {
+                self.diags.push(Diagnostic::error(
+                    "E0305",
+                    "this pattern doesn't match the value's type".to_string(),
+                    format!(
+                        "`{}` / `{}` patterns work on `T?` values only",
+                        syntax::LIT_VALUE,
+                        syntax::LIT_NULL
+                    ),
+                    "use a variant pattern for enum values".to_string(),
+                    Some(span),
+                ));
+                HashMap::new()
+            }
+            _ => HashMap::new(),
         }
     }
 
@@ -1135,6 +2286,20 @@ impl<'a> Checker<'a> {
             }
             BinOp::Eq | BinOp::Ne => {
                 if lt == rt {
+                    if !types_comparable(&lt, self.registry) {
+                        if let Some(field) = incomparable_field(&lt, self.registry) {
+                            self.diags.push(Diagnostic::error(
+                                "E0312",
+                                format!("`{}` can't be compared with `{}` because field `{}` doesn't support `{}`", lt.name(), rt.name(), field, op.spell()),
+                                "value equality needs every field to support the comparison".to_string(),
+                                "compare individual fields instead".to_string(),
+                                Some(span),
+                            ));
+                        } else {
+                            self.op_mismatch(op, &lt, &rt, span);
+                        }
+                        return None;
+                    }
                     Some(Type::Bool)
                 } else {
                     self.op_mismatch(op, &lt, &rt, span);
@@ -1232,11 +2397,11 @@ impl<'a> Checker<'a> {
             }
             let arg = &mut call.args[0];
             if let Some(t) = self.infer(&mut arg.expr) {
-                if !matches!(t, Type::Int | Type::Float | Type::Bool | Type::String) {
+                if !is_printable(&t, self.registry) {
                     self.diags.push(Diagnostic::error(
                         "E0112",
                         format!("`{}` doesn't know how to show {}", syntax::BUILTIN_PRINT, t.show()),
-                        "print shows Int, Float, Bool, and String values".to_string(),
+                        "print shows values that have a display".to_string(),
                         "print one of its parts instead".to_string(),
                         Some(arg.expr.span()),
                     ));
@@ -1317,6 +2482,7 @@ impl<'a> Checker<'a> {
             };
 
             if let Some(arg_ty) = &arg_ty {
+                self.check_type_assignable(param_ty, arg_ty, arg.expr.span());
                 if arg_ty != param_ty && !matches!(param_ty, Type::Named(_)) {
                     self.diags.push(Diagnostic::error(
                         "E0112",
@@ -1337,7 +2503,7 @@ impl<'a> Checker<'a> {
             match (param_conv, arg.convention) {
                 (AccessConvention::Move, AccessConvention::Read) => {
                     if let Expr::Ident(name, span) = &arg.expr {
-                        if is_cloneable(param_ty, self.structs) {
+                        if is_cloneable(param_ty, self.registry, self.structs) {
                             arg.flags.implicit_clone = true;
                             self.diags.push(Diagnostic::lint(
                                 "L0201",
@@ -1601,7 +2767,10 @@ fn stmt_definitely_returns(stmt: &Stmt) -> bool {
             arms, else_body, ..
         } => {
             arms.iter().all(|a| block_definitely_returns(&a.body))
-                && block_definitely_returns(else_body)
+                && else_body
+                    .as_ref()
+                    .map(|b| block_definitely_returns(b))
+                    .unwrap_or(true)
         }
         _ => false,
     }
@@ -1618,13 +2787,36 @@ fn if_definitely_returns(ifs: &IfStmt) -> bool {
     }
 }
 
-fn is_cloneable(ty: &Type, structs: &HashMap<String, Vec<(Option<String>, Type)>>) -> bool {
+fn is_cloneable(
+    ty: &Type,
+    registry: &TypeRegistry,
+    structs: &HashMap<String, Vec<(Option<String>, Type)>>,
+) -> bool {
     match ty {
         Type::Int | Type::Bool | Type::Float | Type::String => true,
-        Type::List(inner) | Type::Shared(inner) => is_cloneable(inner, structs),
+        Type::List(inner) | Type::Shared(inner) | Type::Option(inner) => {
+            is_cloneable(inner, registry, structs)
+        }
         Type::Named(name) => {
-            // Built-in cloneable; user structs without Clone are not.
-            name != "NoClone"
+            if name == "NoClone" {
+                return false;
+            }
+            registry.contains(name)
+                && match registry.types.get(name) {
+                    Some(TypeDef::Struct { fields, .. }) => fields
+                        .iter()
+                        .all(|(_, _, fty, is_ref)| !*is_ref && is_cloneable(fty, registry, structs)),
+                    Some(TypeDef::Enum { variants, .. }) => variants.values().all(|(_, p)| {
+                        match p {
+                            VariantPayload::Unit => true,
+                            VariantPayload::Single(t, _) => is_cloneable(t, registry, structs),
+                            VariantPayload::Named(fs) => fs
+                                .iter()
+                                .all(|f| is_cloneable(&f.ty, registry, structs)),
+                        }
+                    }),
+                    None => false,
+                }
         }
     }
 }
@@ -1664,7 +2856,7 @@ fn walk_stmts_for_const_refs(
                     walk_expr_for_const_refs(&a.cond, const_names, taken);
                     walk_stmts_for_const_refs(&a.body, const_names, taken);
                 }
-                walk_stmts_for_const_refs(else_body, const_names, taken);
+                walk_stmts_for_const_refs(else_body.as_deref().unwrap_or(&[]), const_names, taken);
             }
             Stmt::Break(_) | Stmt::Continue(_) => {}
             Stmt::Loop(inner, _) | Stmt::Unsafe(inner, _) => {
@@ -1703,14 +2895,156 @@ fn walk_expr_for_const_refs(expr: &Expr, const_names: &[String], taken: &mut Has
                 walk_expr_for_const_refs(&a.expr, const_names, taken);
             }
         }
-        Expr::Unary(_, inner, _) | Expr::Deref(inner, _) | Expr::Member(inner, _, _) => {
+        Expr::Unary(_, inner, _) | Expr::Deref(inner, _) | Expr::Field(inner, _, _) => {
             walk_expr_for_const_refs(inner, const_names, taken)
         }
+        Expr::MethodCall { receiver, args, .. } => {
+            walk_expr_for_const_refs(receiver, const_names, taken);
+            for a in args {
+                walk_expr_for_const_refs(&a.expr, const_names, taken);
+            }
+        }
+        Expr::StructLit { fields, .. } => {
+            for (_, _, e) in fields {
+                walk_expr_for_const_refs(e, const_names, taken);
+            }
+        }
+        Expr::EnumLit { args, .. } => {
+            for a in args {
+                match a {
+                    EnumLitArg::Positional(e) | EnumLitArg::Named { expr: e, .. } => {
+                        walk_expr_for_const_refs(e, const_names, taken);
+                    }
+                }
+            }
+        }
+        Expr::Present(inner, _) => walk_expr_for_const_refs(inner, const_names, taken),
+        Expr::Absent(_) => {}
+        Expr::PatternTest { subject, .. } => walk_expr_for_const_refs(subject, const_names, taken),
         Expr::Binary(_, l, r, _) => {
             walk_expr_for_const_refs(l, const_names, taken);
             walk_expr_for_const_refs(r, const_names, taken);
         }
         Expr::Int(_, _) | Expr::Float(_, _) | Expr::Bool(_, _) => {}
+    }
+}
+
+fn expr_is_same_ident(a: &Expr, name: &str) -> bool {
+    matches!(a, Expr::Ident(n, _) if n == name)
+}
+
+fn pattern_variant_name(pattern: &Pattern) -> Option<String> {
+    match pattern {
+        Pattern::Variant { variant, .. } => Some(variant.clone()),
+        Pattern::Present { .. } => Some(syntax::LIT_VALUE.to_string()),
+        Pattern::Absent(_) => Some(syntax::LIT_NULL.to_string()),
+    }
+}
+
+fn missing_pattern_coverage(
+    subject_ty: &Type,
+    covered: &HashSet<String>,
+    registry: &TypeRegistry,
+) -> Option<Vec<String>> {
+    match subject_ty {
+        Type::Named(name) => {
+            let order = registry.enum_variant_order(name)?;
+            let missing: Vec<_> = order
+                .iter()
+                .filter(|v| !covered.contains(*v))
+                .cloned()
+                .collect();
+            if missing.is_empty() {
+                None
+            } else {
+                Some(missing)
+            }
+        }
+        Type::Option(_) => {
+            let mut missing = Vec::new();
+            if !covered.contains(syntax::LIT_VALUE) {
+                missing.push(syntax::LIT_VALUE.to_string());
+            }
+            if !covered.contains(syntax::LIT_NULL) {
+                missing.push(syntax::LIT_NULL.to_string());
+            }
+            if missing.is_empty() {
+                None
+            } else {
+                Some(missing)
+            }
+        }
+        _ => None,
+    }
+}
+
+fn pattern_binding_types(payload: &VariantPayload) -> Vec<Type> {
+    match payload {
+        VariantPayload::Unit => Vec::new(),
+        VariantPayload::Single(t, _) => vec![t.clone()],
+        VariantPayload::Named(fs) => fs.iter().map(|f| f.ty.clone()).collect(),
+    }
+}
+
+fn suggest_field(name: &str, candidates: &[String]) -> Option<String> {
+    let mut best: Option<(String, usize)> = None;
+    for cand in candidates {
+        let d = edit_distance(name, cand);
+        if d <= 2 && best.as_ref().map_or(true, |(_, bd)| d < *bd) {
+            best = Some((cand.clone(), d));
+        }
+    }
+    best.map(|(s, _)| s)
+}
+
+fn is_printable(ty: &Type, registry: &TypeRegistry) -> bool {
+    match ty {
+        Type::Int | Type::Float | Type::Bool | Type::String => true,
+        Type::Option(inner) => is_printable(inner, registry),
+        Type::Named(n) => registry.contains(n),
+        Type::List(_) | Type::Shared(_) => false,
+    }
+}
+
+fn types_comparable(ty: &Type, registry: &TypeRegistry) -> bool {
+    match ty {
+        Type::Int | Type::Bool | Type::Float | Type::String => true,
+        Type::Option(inner) => types_comparable(inner, registry),
+        Type::Named(name) => registry.contains(name) && incomparable_field(ty, registry).is_none(),
+        Type::List(_) | Type::Shared(_) => false,
+    }
+}
+
+fn incomparable_field(ty: &Type, registry: &TypeRegistry) -> Option<String> {
+    match ty {
+        Type::Named(name) => match registry.types.get(name) {
+            Some(TypeDef::Struct { fields, .. }) => fields.iter().find_map(|(fname, _, fty, is_ref)| {
+                if *is_ref || !types_comparable(fty, registry) {
+                    Some(fname.clone())
+                } else {
+                    None
+                }
+            }),
+            Some(TypeDef::Enum { variants, .. }) => variants.values().find_map(|(_, payload)| {
+                match payload {
+                    VariantPayload::Unit => None,
+                    VariantPayload::Single(t, _) if !types_comparable(t, registry) => {
+                        Some("payload".to_string())
+                    }
+                    VariantPayload::Named(fs) => fs.iter().find_map(|f| {
+                        if types_comparable(&f.ty, registry) {
+                            None
+                        } else {
+                            Some(f.name.clone())
+                        }
+                    }),
+                    _ => None,
+                }
+            }),
+            None => Some("?".to_string()),
+        },
+        Type::Option(inner) => incomparable_field(inner, registry),
+        _ => Some("?".to_string()),
     }
 }
 

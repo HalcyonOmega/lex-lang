@@ -55,16 +55,17 @@ each with a `.fixed.lex` companion that compiles (`tests/ui_fixes.rs`);
 lint snapshots in `tests/ui_lint/`; golden tests prove rustc never rejects
 what sema passes (the verifier earning its keep). ✓
 
-## M3 — Data  *(plan: docs/plans/m03-data.md; ballots: Group 2)*
+## M3 — Data  *(plan: docs/plans/m03-data.md; ballots: Group 2 ✅)* ✓ 2026-06-11
 
 Structs, enums (sum types), `switch` exhaustiveness for enums ("you
-forgot the `Circle` case"), `is` patterns, Option (`T?`, no null,
+forgot the `Circle` case"), `==` pattern tests, Option (`T?`, no null,
 ever), methods (S27: `self`, `c.area()`, definable inside the type or
 in `impl Type { }` blocks), invisible auto-boxing for recursive types.
 No inheritance, ever (non-goal). Traits/interfaces (S28) are explicitly
 out of M3 — they land in M9.
-**Exit:** a shapes/state-machine example; exhaustiveness errors list the
-missing cases verbatim.
+**Exit:** examples `10_structs`–`13_recursive_enum`; every E03xx/L0301
+and E0020–E0023 has a ui snapshot; exhaustiveness errors list missing
+cases verbatim. ✓
 
 ## M4 — Errors as values  *(plan: docs/plans/m04-errors.md; ballots: Group 3)*
 

@@ -8,8 +8,9 @@
 //! rest of the file's problems.
 
 use crate::ast::{
-    AccessConvention, BinOp, Binding, Call, CallArg, ConstAttr, ConstDef, ElseBranch, Expr,
-    Field, Func, IfStmt, Item, Param, Program, Stmt, StrPart, StructDef, SwitchArm, Type, UnOp,
+    AccessConvention, BinOp, Binding, Call, CallArg, ConstAttr, ConstDef, ElseBranch, EnumDef,
+    EnumLitArg, Expr, Field, Func, IfStmt, ImplDef, Item, Param, Pattern, Program, Stmt, StrPart,
+    StructDef, SwitchArm, Type, UnOp, Variant, VariantField, VariantPayload,
 };
 use crate::diag::{Diagnostic, Span};
 use crate::lexer::{describe, StrTokPart, TokKind, Token};
@@ -66,6 +67,8 @@ impl<'a> Parser<'a> {
                 | TokKind::KwFn
                 | TokKind::KwPub
                 | TokKind::KwStruct
+                | TokKind::KwEnum
+                | TokKind::KwImpl
                 | TokKind::KwConst => return,
                 _ => {
                     self.bump();
@@ -138,7 +141,54 @@ impl<'a> Parser<'a> {
                 TokKind::Eof => break,
                 TokKind::KwFn | TokKind::KwPub => self.func().map(Item::Func),
                 TokKind::KwStruct => self.struct_def(false).map(Item::Struct),
+                TokKind::KwEnum => self.enum_def(false).map(Item::Enum),
+                TokKind::KwImpl => self.impl_def().map(Item::Impl),
                 TokKind::KwConst | TokKind::At => self.const_def().map(Item::Const),
+                TokKind::Ident(name) if name == syntax::FOREIGN_CLASS => {
+                    let t = self.bump();
+                    self.diags.push(Diagnostic::error(
+                        "E0021",
+                        format!(
+                            "types are written with `{}`, not `{}`",
+                            syntax::KW_STRUCT,
+                            syntax::FOREIGN_CLASS
+                        ),
+                        format!(
+                            "{} uses exactly one spelling for each thing, so all code reads the same",
+                            syntax::LANG_NAME
+                        ),
+                        format!(
+                            "replace `{}` with `{}`",
+                            syntax::FOREIGN_CLASS,
+                            syntax::KW_STRUCT
+                        ),
+                        Some(t.span),
+                    ));
+                    self.struct_def(false).map(Item::Struct)
+                }
+                TokKind::Ident(name)
+                    if name == syntax::FOREIGN_INTERFACE || name == syntax::FOREIGN_TRAIT =>
+                {
+                    let t = self.bump();
+                    let foreign = if let TokKind::Ident(n) = &t.kind {
+                        n.clone()
+                    } else {
+                        unreachable!()
+                    };
+                    self.diags.push(Diagnostic::error(
+                        "E0022",
+                        format!("`{}` doesn't work yet", foreign),
+                        "traits and interfaces arrive in M9 — for now, use structs and enums"
+                            .to_string(),
+                        format!(
+                            "remove `{}` for now, or define a `struct` / `enum` instead",
+                            foreign
+                        ),
+                        Some(t.span),
+                    ));
+                    self.sync_top();
+                    continue;
+                }
                 TokKind::Ident(name)
                     if name == syntax::FOREIGN_DEF || name == syntax::FOREIGN_FUNC =>
                 {
@@ -274,9 +324,27 @@ impl<'a> Parser<'a> {
 
     fn param(&mut self) -> Result<Param, Diagnostic> {
         let convention = self.parse_access_prefix();
-        let (name, name_span) = self.expect_ident("for a parameter name")?;
-        self.expect(TokKind::Colon, "after a parameter name")?;
-        let (ty, ty_span) = self.type_()?;
+        let (name, name_span) = if matches!(self.peek().kind, TokKind::KwSelf) {
+            let span = self.bump().span;
+            (syntax::KW_SELF.to_string(), span)
+        } else {
+            self.expect_ident("for a parameter name")?
+        };
+        let (ty, ty_span) = if matches!(self.peek().kind, TokKind::Colon) {
+            self.bump();
+            self.type_()?
+        } else if name == syntax::KW_SELF {
+            // S27: receiver type is the owning struct/enum; sema fills it in.
+            (Type::Named(String::new()), name_span)
+        } else {
+            return Err(Diagnostic::error(
+                "E0003",
+                format!("expected `:` after the parameter `{}`", name),
+                "every parameter except `self` needs a type after its name".to_string(),
+                format!("write `{}: Type`", name),
+                Some(name_span),
+            ));
+        };
         Ok(Param {
             convention,
             name,
@@ -299,10 +367,15 @@ impl<'a> Parser<'a> {
         let (name, name_span) = self.expect_ident("after `struct`")?;
         self.expect(TokKind::LBrace, "to open the struct body")?;
         let mut fields = Vec::new();
+        let mut methods = Vec::new();
         while !matches!(self.peek().kind, TokKind::RBrace | TokKind::Eof) {
-            fields.push(self.field()?);
-            if matches!(self.peek().kind, TokKind::Comma | TokKind::Semi) {
-                self.bump();
+            if matches!(self.peek().kind, TokKind::KwFn | TokKind::KwPub) {
+                methods.push(self.method_in_type()?);
+            } else {
+                fields.push(self.field()?);
+                if matches!(self.peek().kind, TokKind::Comma | TokKind::Semi) {
+                    self.bump();
+                }
             }
         }
         self.bump(); // }
@@ -311,7 +384,116 @@ impl<'a> Parser<'a> {
             name,
             name_span,
             fields,
+            methods,
         })
+    }
+
+    fn enum_def(&mut self, nested: bool) -> Result<EnumDef, Diagnostic> {
+        let is_pub = if nested {
+            false
+        } else {
+            matches!(self.peek().kind, TokKind::KwPub)
+        };
+        if is_pub {
+            self.bump();
+        }
+        self.expect_kw(TokKind::KwEnum, "to start an enum definition")?;
+        let (name, name_span) = self.expect_ident("after `enum`")?;
+        self.expect(TokKind::LBrace, "to open the enum body")?;
+        let mut variants = Vec::new();
+        let mut methods = Vec::new();
+        while !matches!(self.peek().kind, TokKind::RBrace | TokKind::Eof) {
+            if matches!(self.peek().kind, TokKind::KwFn | TokKind::KwPub) {
+                methods.push(self.method_in_type()?);
+            } else {
+                variants.push(self.variant()?);
+                if matches!(self.peek().kind, TokKind::Semi) {
+                    self.bump();
+                }
+            }
+        }
+        self.bump();
+        Ok(EnumDef {
+            is_pub,
+            name,
+            name_span,
+            variants,
+            methods,
+        })
+    }
+
+    fn variant(&mut self) -> Result<Variant, Diagnostic> {
+        let (name, name_span) = self.expect_ident("for a variant name")?;
+        let payload = if matches!(self.peek().kind, TokKind::LParen) {
+            self.bump();
+            let payload = self.variant_payload()?;
+            self.expect(TokKind::RParen, "after a variant's payload")?;
+            payload
+        } else {
+            VariantPayload::Unit
+        };
+        Ok(Variant {
+            name,
+            name_span,
+            payload,
+        })
+    }
+
+    fn variant_payload(&mut self) -> Result<VariantPayload, Diagnostic> {
+        if matches!(self.peek().kind, TokKind::Ident(_)) {
+            let peek2 = self.peek2().kind.clone();
+            if matches!(peek2, TokKind::Colon) {
+                let mut fields = Vec::new();
+                loop {
+                    let (name, name_span) = self.expect_ident("for a variant field name")?;
+                    self.expect(TokKind::Colon, "after a variant field name")?;
+                    let (ty, ty_span) = self.type_()?;
+                    fields.push(VariantField {
+                        name,
+                        name_span,
+                        ty,
+                        ty_span,
+                    });
+                    if !matches!(self.peek().kind, TokKind::Comma) {
+                        break;
+                    }
+                    self.bump();
+                }
+                Ok(VariantPayload::Named(fields))
+            } else {
+                let (ty, ty_span) = self.type_()?;
+                Ok(VariantPayload::Single(ty, ty_span))
+            }
+        } else {
+            let (ty, ty_span) = self.type_()?;
+            Ok(VariantPayload::Single(ty, ty_span))
+        }
+    }
+
+    fn impl_def(&mut self) -> Result<ImplDef, Diagnostic> {
+        self.expect_kw(TokKind::KwImpl, "to start an `impl` block")?;
+        let (type_name, type_span) = self.expect_ident("after `impl`")?;
+        self.expect(TokKind::LBrace, "to open the `impl` body")?;
+        let mut methods = Vec::new();
+        while !matches!(self.peek().kind, TokKind::RBrace | TokKind::Eof) {
+            methods.push(self.method_in_type()?);
+        }
+        self.bump();
+        Ok(ImplDef {
+            type_name,
+            type_span,
+            methods,
+        })
+    }
+
+    /// S27: method inside a type body or `impl` block.
+    fn method_in_type(&mut self) -> Result<Func, Diagnostic> {
+        let is_pub = matches!(self.peek().kind, TokKind::KwPub);
+        if is_pub {
+            self.bump();
+        }
+        self.expect_kw(TokKind::KwFn, "to start a method")?;
+        self.func_after_fn(is_pub)
     }
 
     fn field(&mut self) -> Result<Field, Diagnostic> {
@@ -483,7 +665,7 @@ impl<'a> Parser<'a> {
             TokKind::KwIf => Ok(Stmt::If(self.if_stmt()?)),
             TokKind::KwWhile => {
                 let span = self.bump().span;
-                let cond = self.expr()?;
+                let cond = self.expr_no_struct_lit()?;
                 self.expect(TokKind::LBrace, "to open the `while` body")?;
                 let body = self.block_stmts();
                 Ok(Stmt::While { cond, body, span })
@@ -492,7 +674,7 @@ impl<'a> Parser<'a> {
                 let span = self.bump().span;
                 let (var, var_span) = self.expect_ident("after `for`")?;
                 self.expect_kw(TokKind::KwIn, "after the loop name")?;
-                let start = self.expr()?;
+                let start = self.expr_no_struct_lit()?;
                 if !matches!(self.peek().kind, TokKind::DotDot) {
                     return Err(Diagnostic::error(
                         "E0003",
@@ -508,7 +690,7 @@ impl<'a> Parser<'a> {
                     ));
                 }
                 self.bump(); // ..
-                let end = self.expr()?;
+                let end = self.expr_no_struct_lit()?;
                 self.expect(TokKind::LBrace, "to open the `for` body")?;
                 let body = self.block_stmts();
                 Ok(Stmt::For {
@@ -567,7 +749,9 @@ impl<'a> Parser<'a> {
                 }
                 let expr = self.expr()?;
                 match &expr {
-                    Expr::Call(_) | Expr::Member(_, _, _) => {}
+                    Expr::Call(_)
+                    | Expr::Field(_, _, _)
+                    | Expr::MethodCall { .. } => {}
                     other => {
                         return Err(Diagnostic::error(
                             "E0003",
@@ -603,7 +787,7 @@ impl<'a> Parser<'a> {
 
     fn if_stmt(&mut self) -> Result<IfStmt, Diagnostic> {
         let span = self.bump().span; // `if`
-        let cond = self.expr()?;
+        let cond = self.expr_no_struct_lit()?;
         self.expect(TokKind::LBrace, "to open the `if` body")?;
         let then_body = self.block_stmts();
         let mut else_branch = None;
@@ -627,7 +811,7 @@ impl<'a> Parser<'a> {
     /// `switch` body, after the keyword (S24): condition arms with `->`,
     /// each arm block followed by `;`, and a required `else` arm.
     fn switch_after_kw(&mut self, span: Span) -> Result<Stmt, Diagnostic> {
-        let subject = self.expr()?;
+        let subject = self.expr_no_struct_lit()?;
         self.expect(TokKind::LBrace, "to open the `switch` body")?;
         let mut arms = Vec::new();
         let mut else_body: Option<Vec<Stmt>> = None;
@@ -647,6 +831,38 @@ impl<'a> Parser<'a> {
                         Some(self.peek().span),
                     ));
                 }
+                TokKind::Ident(name)
+                    if name == syntax::FOREIGN_CASE || name == syntax::FOREIGN_DEFAULT =>
+                {
+                    let t = self.bump();
+                    let foreign = if let TokKind::Ident(n) = &t.kind {
+                        n.clone()
+                    } else {
+                        unreachable!()
+                    };
+                    self.diags.push(Diagnostic::error(
+                        "E0023",
+                        format!(
+                            "`{}` arms are written `condition {} {{ ... }};`, not `{}`",
+                            syntax::KW_SWITCH,
+                            syntax::OP_ARM_ARROW,
+                            foreign
+                        ),
+                        format!(
+                            "choosing one branch from many uses `{}` with `->` arms (S24)",
+                            syntax::KW_SWITCH
+                        ),
+                        format!(
+                            "replace `{}` with a condition and `{}`, like `x == 1 {} {{ ... }};`",
+                            foreign,
+                            syntax::OP_ARM_ARROW,
+                            syntax::OP_ARM_ARROW
+                        ),
+                        Some(t.span),
+                    ));
+                    self.sync_stmt();
+                    continue;
+                }
                 TokKind::KwElse => {
                     self.bump();
                     self.expect(TokKind::Arrow, "after `else` in a `switch`")?;
@@ -657,7 +873,7 @@ impl<'a> Parser<'a> {
                 }
                 _ => {
                     let arm_start = self.peek().span;
-                    let cond = self.expr()?;
+                    let cond = self.expr_no_struct_lit()?;
                     self.expect(TokKind::Arrow, "after a `switch` arm's condition")?;
                     self.expect(TokKind::LBrace, "to open the arm's body")?;
                     let body = self.block_stmts();
@@ -670,15 +886,6 @@ impl<'a> Parser<'a> {
                 }
             }
         }
-        let Some(else_body) = else_body else {
-            return Err(Diagnostic::error(
-                "E0003",
-                format!("this `{}` has no `{}` arm", syntax::KW_SWITCH, syntax::KW_ELSE),
-                "one arm must always run, so every `switch` ends with an `else` arm".to_string(),
-                "add `else -> { ... };` before the closing `}`".to_string(),
-                Some(span),
-            ));
-        };
         Ok(Stmt::Switch {
             subject,
             arms,
@@ -726,11 +933,15 @@ impl<'a> Parser<'a> {
     // --- expressions -----------------------------------------------------
 
     fn expr(&mut self) -> Result<Expr, Diagnostic> {
-        self.expr_or()
+        self.expr_or(true)
     }
 
-    fn expr_or(&mut self) -> Result<Expr, Diagnostic> {
-        let mut lhs = self.expr_and()?;
+    fn expr_no_struct_lit(&mut self) -> Result<Expr, Diagnostic> {
+        self.expr_or(false)
+    }
+
+    fn expr_or(&mut self, allow_struct_lit: bool) -> Result<Expr, Diagnostic> {
+        let mut lhs = self.expr_and(allow_struct_lit)?;
         loop {
             let is_or = match &self.peek().kind {
                 TokKind::OrOr => true,
@@ -744,15 +955,15 @@ impl<'a> Parser<'a> {
                 break;
             }
             let op_span = self.bump().span;
-            let rhs = self.expr_and()?;
+            let rhs = self.expr_and(allow_struct_lit)?;
             let span = Span::new(lhs.span().start, rhs.span().end.max(op_span.end));
             lhs = Expr::Binary(BinOp::Or, Box::new(lhs), Box::new(rhs), span);
         }
         Ok(lhs)
     }
 
-    fn expr_and(&mut self) -> Result<Expr, Diagnostic> {
-        let mut lhs = self.expr_cmp()?;
+    fn expr_and(&mut self, allow_struct_lit: bool) -> Result<Expr, Diagnostic> {
+        let mut lhs = self.expr_cmp(allow_struct_lit)?;
         loop {
             let is_and = match &self.peek().kind {
                 TokKind::AndAnd => true,
@@ -766,7 +977,7 @@ impl<'a> Parser<'a> {
                 break;
             }
             let op_span = self.bump().span;
-            let rhs = self.expr_cmp()?;
+            let rhs = self.expr_cmp(allow_struct_lit)?;
             let span = Span::new(lhs.span().start, rhs.span().end.max(op_span.end));
             lhs = Expr::Binary(BinOp::And, Box::new(lhs), Box::new(rhs), span);
         }
@@ -774,8 +985,8 @@ impl<'a> Parser<'a> {
     }
 
     /// Comparisons don't chain: `a < b < c` is a parse error with guidance.
-    fn expr_cmp(&mut self) -> Result<Expr, Diagnostic> {
-        let lhs = self.expr_bitor()?;
+    fn expr_cmp(&mut self, allow_struct_lit: bool) -> Result<Expr, Diagnostic> {
+        let lhs = self.expr_bitor(allow_struct_lit)?;
         let op = match &self.peek().kind {
             TokKind::EqEq => Some(BinOp::Eq),
             TokKind::NotEq => Some(BinOp::Ne),
@@ -787,7 +998,19 @@ impl<'a> Parser<'a> {
         };
         let Some(op) = op else { return Ok(lhs) };
         let op_span = self.bump().span;
-        let rhs = self.expr_bitor()?;
+        let rhs = if op == BinOp::Eq {
+            if let Some(pat) = self.try_pattern_rhs()? {
+                let span = Span::new(lhs.span().start, pat_span(&pat).end.max(op_span.end));
+                return Ok(Expr::PatternTest {
+                    subject: Box::new(lhs),
+                    pattern: pat,
+                    span,
+                });
+            }
+            self.expr_bitor(allow_struct_lit)?
+        } else {
+            self.expr_bitor(allow_struct_lit)?
+        };
         let span = Span::new(lhs.span().start, rhs.span().end.max(op_span.end));
         let cmp = Expr::Binary(op, Box::new(lhs), Box::new(rhs), span);
         if let Some(second) = match &self.peek().kind {
@@ -809,41 +1032,41 @@ impl<'a> Parser<'a> {
         Ok(cmp)
     }
 
-    fn expr_bitor(&mut self) -> Result<Expr, Diagnostic> {
-        let mut lhs = self.expr_bitxor()?;
+    fn expr_bitor(&mut self, allow_struct_lit: bool) -> Result<Expr, Diagnostic> {
+        let mut lhs = self.expr_bitxor(allow_struct_lit)?;
         while matches!(self.peek().kind, TokKind::Pipe) {
             let op_span = self.bump().span;
-            let rhs = self.expr_bitxor()?;
+            let rhs = self.expr_bitxor(allow_struct_lit)?;
             let span = Span::new(lhs.span().start, rhs.span().end.max(op_span.end));
             lhs = Expr::Binary(BinOp::BitOr, Box::new(lhs), Box::new(rhs), span);
         }
         Ok(lhs)
     }
 
-    fn expr_bitxor(&mut self) -> Result<Expr, Diagnostic> {
-        let mut lhs = self.expr_bitand()?;
+    fn expr_bitxor(&mut self, allow_struct_lit: bool) -> Result<Expr, Diagnostic> {
+        let mut lhs = self.expr_bitand(allow_struct_lit)?;
         while matches!(self.peek().kind, TokKind::Caret) {
             let op_span = self.bump().span;
-            let rhs = self.expr_bitand()?;
+            let rhs = self.expr_bitand(allow_struct_lit)?;
             let span = Span::new(lhs.span().start, rhs.span().end.max(op_span.end));
             lhs = Expr::Binary(BinOp::BitXor, Box::new(lhs), Box::new(rhs), span);
         }
         Ok(lhs)
     }
 
-    fn expr_bitand(&mut self) -> Result<Expr, Diagnostic> {
-        let mut lhs = self.expr_shift()?;
+    fn expr_bitand(&mut self, allow_struct_lit: bool) -> Result<Expr, Diagnostic> {
+        let mut lhs = self.expr_shift(allow_struct_lit)?;
         while matches!(self.peek().kind, TokKind::Amp) {
             let op_span = self.bump().span;
-            let rhs = self.expr_shift()?;
+            let rhs = self.expr_shift(allow_struct_lit)?;
             let span = Span::new(lhs.span().start, rhs.span().end.max(op_span.end));
             lhs = Expr::Binary(BinOp::BitAnd, Box::new(lhs), Box::new(rhs), span);
         }
         Ok(lhs)
     }
 
-    fn expr_shift(&mut self) -> Result<Expr, Diagnostic> {
-        let mut lhs = self.expr_add()?;
+    fn expr_shift(&mut self, allow_struct_lit: bool) -> Result<Expr, Diagnostic> {
+        let mut lhs = self.expr_add(allow_struct_lit)?;
         loop {
             let op = match &self.peek().kind {
                 TokKind::Shl => BinOp::Shl,
@@ -851,15 +1074,15 @@ impl<'a> Parser<'a> {
                 _ => break,
             };
             let op_span = self.bump().span;
-            let rhs = self.expr_add()?;
+            let rhs = self.expr_add(allow_struct_lit)?;
             let span = Span::new(lhs.span().start, rhs.span().end.max(op_span.end));
             lhs = Expr::Binary(op, Box::new(lhs), Box::new(rhs), span);
         }
         Ok(lhs)
     }
 
-    fn expr_add(&mut self) -> Result<Expr, Diagnostic> {
-        let mut lhs = self.expr_mul()?;
+    fn expr_add(&mut self, allow_struct_lit: bool) -> Result<Expr, Diagnostic> {
+        let mut lhs = self.expr_mul(allow_struct_lit)?;
         loop {
             let op = match &self.peek().kind {
                 TokKind::Plus => BinOp::Add,
@@ -867,15 +1090,15 @@ impl<'a> Parser<'a> {
                 _ => break,
             };
             let op_span = self.bump().span;
-            let rhs = self.expr_mul()?;
+            let rhs = self.expr_mul(allow_struct_lit)?;
             let span = Span::new(lhs.span().start, rhs.span().end.max(op_span.end));
             lhs = Expr::Binary(op, Box::new(lhs), Box::new(rhs), span);
         }
         Ok(lhs)
     }
 
-    fn expr_mul(&mut self) -> Result<Expr, Diagnostic> {
-        let mut lhs = self.expr_unary()?;
+    fn expr_mul(&mut self, allow_struct_lit: bool) -> Result<Expr, Diagnostic> {
+        let mut lhs = self.expr_unary(allow_struct_lit)?;
         loop {
             let op = match &self.peek().kind {
                 TokKind::Star => BinOp::Mul,
@@ -884,31 +1107,31 @@ impl<'a> Parser<'a> {
                 _ => break,
             };
             let op_span = self.bump().span;
-            let rhs = self.expr_unary()?;
+            let rhs = self.expr_unary(allow_struct_lit)?;
             let span = Span::new(lhs.span().start, rhs.span().end.max(op_span.end));
             lhs = Expr::Binary(op, Box::new(lhs), Box::new(rhs), span);
         }
         Ok(lhs)
     }
 
-    fn expr_unary(&mut self) -> Result<Expr, Diagnostic> {
+    fn expr_unary(&mut self, allow_struct_lit: bool) -> Result<Expr, Diagnostic> {
         match &self.peek().kind {
             TokKind::Minus => {
                 let span = self.bump().span;
-                let inner = self.expr_unary()?;
+                let inner = self.expr_unary(allow_struct_lit)?;
                 let full = Span::new(span.start, inner.span().end);
                 Ok(Expr::Unary(UnOp::Neg, Box::new(inner), full))
             }
             TokKind::Bang => {
                 let span = self.bump().span;
-                let inner = self.expr_unary()?;
+                let inner = self.expr_unary(allow_struct_lit)?;
                 let full = Span::new(span.start, inner.span().end);
                 Ok(Expr::Unary(UnOp::Not, Box::new(inner), full))
             }
             TokKind::Ident(n) if n == syntax::FOREIGN_NOT && self.starts_expr(&self.peek2().kind) => {
                 self.foreign_logic_error(syntax::FOREIGN_NOT, syntax::OP_NOT);
                 let span = self.bump().span;
-                let inner = self.expr_unary()?;
+                let inner = self.expr_unary(allow_struct_lit)?;
                 let full = Span::new(span.start, inner.span().end);
                 Ok(Expr::Unary(UnOp::Not, Box::new(inner), full))
             }
@@ -925,35 +1148,48 @@ impl<'a> Parser<'a> {
                     format!("remove `{}`", syntax::FOREIGN_TRY),
                     Some(t.span),
                 ));
-                self.expr_unary()
+                self.expr_unary(allow_struct_lit)
             }
             TokKind::Star => {
-                // M2 scaffolding: deref, checked by sema (E0208).
                 let span = self.bump().span;
-                let inner = self.expr_unary()?;
+                let inner = self.expr_unary(allow_struct_lit)?;
                 Ok(Expr::Deref(Box::new(inner), span))
             }
-            _ => self.expr_postfix(),
+            _ => self.expr_postfix(allow_struct_lit),
         }
     }
 
-    fn expr_postfix(&mut self) -> Result<Expr, Diagnostic> {
-        let mut expr = self.expr_primary()?;
+    fn expr_postfix(&mut self, allow_struct_lit: bool) -> Result<Expr, Diagnostic> {
+        let mut expr = self.expr_primary(allow_struct_lit)?;
         loop {
             match &self.peek().kind {
                 TokKind::Dot => {
                     self.bump();
                     let (member, member_span) = self.expect_ident("after `.`")?;
                     if matches!(self.peek().kind, TokKind::LParen) {
-                        // Method-call shape; only `.clone()` exists before M3
-                        // (sema enforces that).
                         self.bump();
+                        let mut args = Vec::new();
+                        if !matches!(self.peek().kind, TokKind::RParen) {
+                            loop {
+                                args.push(self.call_arg()?);
+                                if matches!(self.peek().kind, TokKind::RParen) {
+                                    break;
+                                }
+                                self.expect(TokKind::Comma, "between arguments")?;
+                            }
+                        }
                         self.expect(TokKind::RParen, "to finish the call")?;
+                        expr = Expr::MethodCall {
+                            receiver: Box::new(expr),
+                            method: member,
+                            method_span: member_span,
+                            args,
+                        };
+                    } else {
+                        expr = Expr::Field(Box::new(expr), member, member_span);
                     }
-                    expr = Expr::Member(Box::new(expr), member, member_span);
                 }
                 TokKind::Question => {
-                    // S7: `?` is real syntax, but errors-as-values arrive in M4.
                     let t = self.bump();
                     self.diags.push(Diagnostic::error(
                         "E0006",
@@ -969,8 +1205,67 @@ impl<'a> Parser<'a> {
         Ok(expr)
     }
 
-    fn expr_primary(&mut self) -> Result<Expr, Diagnostic> {
+    fn expr_primary(&mut self, allow_struct_lit: bool) -> Result<Expr, Diagnostic> {
         match self.peek().kind.clone() {
+            TokKind::KwValue => {
+                let span = self.bump().span;
+                self.expect(TokKind::LParen, "after `value`")?;
+                let inner = self.expr()?;
+                self.expect(TokKind::RParen, "after the value inside `value(...)`")?;
+                let full = Span::new(span.start, inner.span().end);
+                Ok(Expr::Present(Box::new(inner), full))
+            }
+            TokKind::KwNull => {
+                let span = self.bump().span;
+                Ok(Expr::Absent(span))
+            }
+            TokKind::Ident(name)
+                if matches!(
+                    name.as_str(),
+                    syntax::FOREIGN_NONE
+                        | syntax::FOREIGN_SOME
+                        | syntax::FOREIGN_NIL
+                        | syntax::FOREIGN_NONE_LOWER
+                        | syntax::FOREIGN_SOME_LOWER
+                ) =>
+            {
+                let t = self.bump();
+                let foreign = if let TokKind::Ident(n) = &t.kind {
+                    n.clone()
+                } else {
+                    unreachable!()
+                };
+                let (canonical, fix) = match foreign.as_str() {
+                    syntax::FOREIGN_NONE | syntax::FOREIGN_NONE_LOWER | syntax::FOREIGN_NIL => {
+                        (syntax::LIT_NULL, syntax::LIT_NULL)
+                    }
+                    _ => (syntax::LIT_VALUE, syntax::LIT_VALUE),
+                };
+                self.diags.push(Diagnostic::error(
+                    "E0020",
+                    format!(
+                        "optional values use `{}` and `{}`, not `{}`",
+                        syntax::LIT_VALUE,
+                        syntax::LIT_NULL,
+                        foreign
+                    ),
+                    format!(
+                        "{} uses exactly one spelling for each thing, so all code reads the same",
+                        syntax::LANG_NAME
+                    ),
+                    format!("replace `{}` with `{}`", foreign, fix),
+                    Some(t.span),
+                ));
+                if canonical == syntax::LIT_NULL {
+                    Ok(Expr::Absent(t.span))
+                } else {
+                    self.expect(TokKind::LParen, "after `value`")?;
+                    let inner = self.expr()?;
+                    self.expect(TokKind::RParen, "after the value inside `value(...)`")?;
+                    let full = Span::new(t.span.start, inner.span().end);
+                    Ok(Expr::Present(Box::new(inner), full))
+                }
+            }
             TokKind::Str(parts) => {
                 let span = self.bump().span;
                 let mut out = Vec::new();
@@ -1024,6 +1319,10 @@ impl<'a> Parser<'a> {
                 let span = self.bump().span;
                 Ok(Expr::Bool(false, span))
             }
+            TokKind::KwSelf => {
+                let span = self.bump().span;
+                Ok(Expr::Ident(syntax::KW_SELF.to_string(), span))
+            }
             TokKind::LParen => {
                 self.bump();
                 let inner = self.expr()?;
@@ -1032,12 +1331,43 @@ impl<'a> Parser<'a> {
             }
             TokKind::Ident(name) => {
                 let span = self.bump().span;
+                if allow_struct_lit && matches!(self.peek().kind, TokKind::LBrace) {
+                    return self.struct_lit_after_name(name, span);
+                }
+                if matches!(self.peek().kind, TokKind::Dot) {
+                    self.bump();
+                    let (member, member_span) = self.expect_ident("after `.`")?;
+                    if matches!(self.peek().kind, TokKind::LParen) {
+                        self.bump();
+                        let mut args = Vec::new();
+                        if !matches!(self.peek().kind, TokKind::RParen) {
+                            loop {
+                                args.push(self.call_arg()?);
+                                if matches!(self.peek().kind, TokKind::RParen) {
+                                    break;
+                                }
+                                self.expect(TokKind::Comma, "between arguments")?;
+                            }
+                        }
+                        self.expect(TokKind::RParen, "to finish the call")?;
+                        return Ok(Expr::MethodCall {
+                            receiver: Box::new(Expr::Ident(name, span)),
+                            method: member,
+                            method_span: member_span,
+                            args,
+                        });
+                    }
+                    return Ok(Expr::Field(
+                        Box::new(Expr::Ident(name, span)),
+                        member,
+                        member_span,
+                    ));
+                }
                 if matches!(self.peek().kind, TokKind::LParen) {
                     let call = self.call_after_name(name, span)?;
-                    Ok(Expr::Call(call))
-                } else {
-                    Ok(Expr::Ident(name, span))
+                    return Ok(Expr::Call(call));
                 }
+                Ok(Expr::Ident(name, span))
             }
             other => Err(Diagnostic::error(
                 "E0003",
@@ -1047,6 +1377,112 @@ impl<'a> Parser<'a> {
                 "e.g. `x`, `42`, `3.5`, or `\"hello\"`".to_string(),
                 Some(self.peek().span),
             )),
+        }
+    }
+
+    fn struct_lit_after_name(
+        &mut self,
+        type_name: String,
+        start_span: Span,
+    ) -> Result<Expr, Diagnostic> {
+        self.expect(TokKind::LBrace, "to open a struct literal")?;
+        let mut fields = Vec::new();
+        while !matches!(self.peek().kind, TokKind::RBrace | TokKind::Eof) {
+            let (field, field_span) = self.expect_ident("for a field name")?;
+            self.expect(TokKind::Colon, "after a field name in a struct literal")?;
+            let value = self.expr()?;
+            fields.push((field, field_span, value));
+            if matches!(self.peek().kind, TokKind::Comma) {
+                self.bump();
+            }
+        }
+        let end = self.peek().span.end;
+        self.bump();
+        Ok(Expr::StructLit {
+            type_name,
+            fields,
+            span: Span::new(start_span.start, end),
+        })
+    }
+
+    fn enum_lit_args(&mut self) -> Result<Vec<EnumLitArg>, Diagnostic> {
+        let mut args = Vec::new();
+        if matches!(self.peek().kind, TokKind::RParen) {
+            return Ok(args);
+        }
+        loop {
+            if matches!(self.peek().kind, TokKind::Ident(_)) {
+                let name = if let TokKind::Ident(n) = self.peek().kind.clone() {
+                    n
+                } else {
+                    unreachable!()
+                };
+                if matches!(self.peek2().kind, TokKind::Colon) {
+                    self.bump();
+                    self.bump();
+                    let expr = self.expr()?;
+                    args.push(EnumLitArg::Named { label: name, expr });
+                } else {
+                    args.push(EnumLitArg::Positional(self.expr()?));
+                }
+            } else {
+                args.push(EnumLitArg::Positional(self.expr()?));
+            }
+            if matches!(self.peek().kind, TokKind::RParen) {
+                break;
+            }
+            self.expect(TokKind::Comma, "between enum variant arguments")?;
+        }
+        Ok(args)
+    }
+
+    /// S31: try to parse a pattern on the right of `==`.
+    fn try_pattern_rhs(&mut self) -> Result<Option<Pattern>, Diagnostic> {
+        match &self.peek().kind {
+            TokKind::KwNull => {
+                let span = self.bump().span;
+                return Ok(Some(Pattern::Absent(span)));
+            }
+            TokKind::KwValue => {
+                let start = self.bump().span;
+                self.expect(TokKind::LParen, "after `value`")?;
+                let (binding, binding_span) = self.expect_ident("inside `value(...)`")?;
+                self.expect(TokKind::RParen, "after the binding in `value(...)`")?;
+                return Ok(Some(Pattern::Present {
+                    binding,
+                    span: Span::new(start.start, binding_span.end),
+                }));
+            }
+            TokKind::Ident(variant) => {
+                let variant = variant.clone();
+                let span = self.peek().span;
+                self.bump();
+                let bindings = if matches!(self.peek().kind, TokKind::LParen) {
+                    self.bump();
+                    let mut bindings = Vec::new();
+                    if !matches!(self.peek().kind, TokKind::RParen) {
+                        loop {
+                            let (b, _) = self.expect_ident("for a pattern binding")?;
+                            bindings.push(b);
+                            if matches!(self.peek().kind, TokKind::RParen) {
+                                break;
+                            }
+                            self.expect(TokKind::Comma, "between pattern bindings")?;
+                        }
+                    }
+                    self.expect(TokKind::RParen, "after pattern bindings")?;
+                    bindings
+                } else {
+                    Vec::new()
+                };
+                let end = self.toks[self.pos.saturating_sub(1)].span.end;
+                return Ok(Some(Pattern::Variant {
+                    variant,
+                    bindings,
+                    span: Span::new(span.start, end),
+                }));
+            }
+            _ => Ok(None),
         }
     }
 
@@ -1225,6 +1661,20 @@ impl<'a> Parser<'a> {
                 ));
             }
         };
+        if matches!(self.peek().kind, TokKind::Question) {
+            let qspan = self.bump().span;
+            if matches!(self.peek().kind, TokKind::Question) {
+                return Err(Diagnostic::error(
+                    "E0309",
+                    "`??` isn't allowed on a type".to_string(),
+                    "an optional value is written `T?` once — there's no optional optional"
+                        .to_string(),
+                    "use a single `?`, like `Int?`".to_string(),
+                    Some(qspan),
+                ));
+            }
+            return Ok((Type::Option(Box::new(base)), start));
+        }
         Ok((base, start))
     }
 
@@ -1300,4 +1750,12 @@ fn binding_why() -> String {
         syntax::KW_VAL,
         syntax::KW_VAR
     )
+}
+
+fn pat_span(pat: &Pattern) -> Span {
+    match pat {
+        Pattern::Variant { span, .. } | Pattern::Present { span, .. } | Pattern::Absent(span) => {
+            *span
+        }
+    }
 }

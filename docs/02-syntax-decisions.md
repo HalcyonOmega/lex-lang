@@ -197,6 +197,54 @@ Cross-file access uses `namespace.item` for every `pub` item (S18).
 Rejected: Rust `use a::b`, bare `import;` with no path or name (teaching
 error only per S14), required `as`.
 
+**S29 — Struct construction (M3)** *(ratified 2026-06-11)*:
+**`Type { field: expr, … }`** — Rust-style struct literals. Every field
+name required exactly once; order may differ from the declaration.
+Rejected: call-style `Point(x: 1.0, y: 2.0)` (B), required factory
+`new` (C). Parser disambiguates `ident {` from blocks in condition
+position (see docs/plans/m03-data.md).
+
+**S30 — Enum declaration & variants (M3)** *(ratified 2026-06-11)*:
+
+```lex
+enum Shape {
+    Circle(Float);              // one payload field: positional type only
+    Rect(w: Float, h: Float);  // two or more: named fields required
+    Empty;
+}
+```
+
+Variants are **`Type.Variant`** — e.g. `Shape.Circle(2.0)`,
+`Shape.Rect(w: 1.0, h: 2.0)`. Single-payload variants use a positional
+type in the declaration and positional args at the call site;
+multi-payload variants require named fields in both places. Rejected:
+`Shape::Variant` (`::`), enums without payloads in v1, named fields on
+single-payload variants.
+
+**S31 — Pattern tests (M3)** *(ratified 2026-06-11)*: **`==`** with a
+pattern right-hand side when the left operand is an enum or `T?` —
+e.g. `if s == Circle(r) { … }`, switch arms `s == Rect(w, h) -> { … };`,
+`if x == value(n) { … }`, `if x == null { … }`. The result is a `Bool`
+(S24-compatible). When every arm of a `switch` is `subject == <pattern>`,
+sema checks exhaustiveness and `else` may be omitted; mixed arms keep
+S24's mandatory `else`. Otherwise `==` is ordinary value equality (S13).
+Rejected: `is` keyword, Rust `match`, accessor-only extraction.
+
+**S32 — Absence / Option (M3)** *(ratified 2026-06-11)*: **`T?`** marks
+an optional value; **`value(expr)`** when present, bare **`null`** when
+absent (lowercase, like `true`/`false`). No nullable references — `null`
+is only legal where a `T?` is expected, never as a value of plain `T`.
+In **type** position, `?` suffix means Option; in **expression** position,
+postfix `?` is error propagation (S7) — parser disambiguates by context.
+Rejected: `Option[T]`, `Some`/`None`, `some`/`none`, `T??`, pointer-style
+null on non-option types.
+
+**S33 — Generic type argument brackets (M3+)** *(ratified 2026-06-11)*:
+**`Type[Args]`** — square brackets for type arguments, e.g. `List[Int]`,
+`Map[String, Int]`, and (when S34 is ratified) `T or E` result sides.
+Rejected: angle brackets `List<Int>` (comparison/`>` ambiguity; no
+turbofish).
+
 ## Enforcement
 
 Ratified decisions are **frozen**. `cargo test` runs `tests/decisions.rs`,
@@ -255,11 +303,6 @@ flexibility.
 
 | ID  | Question                                            | Needed by |
 |-----|-----------------------------------------------------|-----------|
-| S29 | struct construction syntax                          | M3 |
-| S30 | enum declaration & variant syntax                   | M3 |
-| S31 | enum/Option destructuring (`is` patterns)           | M3 |
-| S32 | absence: `T?` / `some` / `none` spelling            | M3 |
-| S33 | generic type argument brackets (`[T]` vs `<T>`)     | M3 |
 | S34 | fallible return type spelling (`T or E`)            | M4 |
 | S35 | error handling ergonomics (`or` fallback)           | M4 |
 | S36 | `panic` / `assert` builtins                         | M4 |
@@ -319,3 +362,8 @@ S26's recommendation is close-as-rejected once S28/S45 are ratified).
 | 2026-06-11 | S17 | full compound-assignment set              | owner |
 | 2026-06-11 | S15 | unwind default; abort in `--small`        | owner |
 | 2026-06-11 | S16 | file + module imports; optional `as`      | owner |
+| 2026-06-11 | S29 | struct literals `Type { f: v }`           | owner |
+| 2026-06-11 | S30 | enums; 1-field positional, 2+ named       | owner |
+| 2026-06-11 | S31 | `==` pattern tests on enums and `T?`        | owner |
+| 2026-06-11 | S32 | `T?`, `value` / `null`                    | owner |
+| 2026-06-11 | S33 | generic args `Type[T]` square brackets    | owner |

@@ -2,6 +2,7 @@
 //! anything an error might need to point at.
 
 use crate::diag::Span;
+use crate::syntax;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AccessConvention {
@@ -21,6 +22,8 @@ pub enum Type {
     String,
     List(Box<Type>),
     Shared(Box<Type>),
+    /// S32: `T?` optional value.
+    Option(Box<Type>),
     Named(String),
 }
 
@@ -34,6 +37,7 @@ impl Type {
             Type::String => "String (text)".to_string(),
             Type::List(inner) => format!("List[{}]", inner.name()),
             Type::Shared(inner) => format!("Shared[{}]", inner.name()),
+            Type::Option(inner) => format!("{}?", inner.name()),
             Type::Named(n) => format!("`{}`", n),
         }
     }
@@ -47,12 +51,20 @@ impl Type {
             Type::String => "String".to_string(),
             Type::List(inner) => format!("List[{}]", inner.name()),
             Type::Shared(inner) => format!("Shared[{}]", inner.name()),
+            Type::Option(inner) => format!("{}?", inner.name()),
             Type::Named(n) => n.clone(),
         }
     }
 
     pub fn is_scalar(&self) -> bool {
         matches!(self, Type::Int | Type::Float | Type::Bool)
+    }
+
+    pub fn unwrap_option(&self) -> Option<&Type> {
+        match self {
+            Type::Option(inner) => Some(inner),
+            _ => None,
+        }
     }
 }
 
@@ -65,6 +77,8 @@ pub struct Program {
 pub enum Item {
     Func(Func),
     Struct(StructDef),
+    Enum(EnumDef),
+    Impl(ImplDef),
     Const(ConstDef),
 }
 
@@ -94,6 +108,47 @@ pub struct StructDef {
     pub name: String,
     pub name_span: Span,
     pub fields: Vec<Field>,
+    pub methods: Vec<Func>,
+}
+
+#[derive(Debug)]
+pub struct EnumDef {
+    pub is_pub: bool,
+    pub name: String,
+    pub name_span: Span,
+    pub variants: Vec<Variant>,
+    pub methods: Vec<Func>,
+}
+
+#[derive(Debug)]
+pub struct Variant {
+    pub name: String,
+    pub name_span: Span,
+    pub payload: VariantPayload,
+}
+
+#[derive(Debug, Clone)]
+pub enum VariantPayload {
+    Unit,
+    /// S30: single-field variants use a positional type only.
+    Single(Type, Span),
+    /// S30: two or more payload fields are named in the declaration.
+    Named(Vec<VariantField>),
+}
+
+#[derive(Debug, Clone)]
+pub struct VariantField {
+    pub name: String,
+    pub name_span: Span,
+    pub ty: Type,
+    pub ty_span: Span,
+}
+
+#[derive(Debug)]
+pub struct ImplDef {
+    pub type_name: String,
+    pub type_span: Span,
+    pub methods: Vec<Func>,
 }
 
 #[derive(Debug)]
@@ -104,6 +159,29 @@ pub struct Field {
     pub name_span: Span,
     pub ty: Type,
     pub ty_span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub enum Pattern {
+    Variant {
+        variant: String,
+        bindings: Vec<String>,
+        span: Span,
+    },
+    Present {
+        binding: String,
+        span: Span,
+    },
+    Absent(Span),
+}
+
+#[derive(Debug, Clone)]
+pub enum EnumLitArg {
+    Positional(Expr),
+    Named {
+        label: String,
+        expr: Expr,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -182,7 +260,7 @@ pub enum Stmt {
     Switch {
         subject: Expr,
         arms: Vec<SwitchArm>,
-        else_body: Vec<Stmt>,
+        else_body: Option<Vec<Stmt>>,
         span: Span,
     },
     Break(Span),
@@ -303,7 +381,38 @@ pub enum Expr {
     Unary(UnOp, Box<Expr>, Span),
     Binary(BinOp, Box<Expr>, Box<Expr>, Span),
     Deref(Box<Expr>, Span),
-    Member(Box<Expr>, String, Span),
+    /// Field access: `v.field`.
+    Field(Box<Expr>, String, Span),
+    /// Method call: `v.method(args)`.
+    MethodCall {
+        receiver: Box<Expr>,
+        method: String,
+        method_span: Span,
+        args: Vec<CallArg>,
+    },
+    /// S29: `Type { field: expr, ... }`.
+    StructLit {
+        type_name: String,
+        fields: Vec<(String, Span, Expr)>,
+        span: Span,
+    },
+    /// S30: `Type.Variant(args)`.
+    EnumLit {
+        type_name: String,
+        variant: String,
+        args: Vec<EnumLitArg>,
+        span: Span,
+    },
+    /// S32: `value(expr)` — present optional.
+    Present(Box<Expr>, Span),
+    /// S32: bare `null` — absent optional.
+    Absent(Span),
+    /// S31: `subject == pattern` (stored as dedicated node for sema/codegen).
+    PatternTest {
+        subject: Box<Expr>,
+        pattern: Pattern,
+        span: Span,
+    },
 }
 
 impl Expr {
@@ -317,8 +426,25 @@ impl Expr {
             | Expr::Unary(_, _, s)
             | Expr::Binary(_, _, _, s)
             | Expr::Deref(_, s)
-            | Expr::Member(_, _, s) => *s,
+            | Expr::Field(_, _, s)
+            | Expr::StructLit { span: s, .. }
+            | Expr::EnumLit { span: s, .. }
+            | Expr::Present(_, s)
+            | Expr::Absent(s)
+            | Expr::PatternTest { span: s, .. } => *s,
             Expr::Call(c) => c.name_span,
+            Expr::MethodCall { method_span, .. } => *method_span,
         }
+    }
+}
+
+impl Func {
+    /// S27: first parameter named `self`.
+    pub fn self_param(&self) -> Option<&Param> {
+        self.params.first().filter(|p| p.name == syntax::KW_SELF)
+    }
+
+    pub fn is_static_method(&self) -> bool {
+        self.self_param().is_none()
     }
 }

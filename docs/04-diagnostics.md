@@ -97,7 +97,10 @@ before continuing.
 | E0114 | sema  | a path reaches the end without `return`   |
 | E0115 | sema  | `break`/`continue` outside a loop         |
 | E0116 | sema  | valueless call used as a value            |
-| E0117 | sema  | staged: fields/methods arrive in M3 (only `.clone()`) |
+| E0020 | parse | teaching: `None`/`Some`/… → `null`/`value` (S32) |
+| E0021 | parse | teaching: `class` → `struct` (S29)              |
+| E0022 | parse | teaching: `trait`/`interface` staged → M9 (S28) |
+| E0023 | parse | teaching: `case`/`default` → switch arm syntax (S24) |
 | E0118 | sema  | name already taken (no shadowing)         |
 | E0119 | sema  | unknown type name                         |
 | E0120 | sema  | moving/returning a borrowed parameter     |
@@ -112,6 +115,19 @@ before continuing.
 | E0208 | sema  | `*` outside `unsafe`                      |
 | L0201 | sema  | implicit `.clone()` at call site (lint)   |
 | L0202 | sema  | auto-clone `Shared` inside loop (lint)    |
+| E0301 | sema  | `impl` for unknown type                   |
+| E0302 | sema  | unknown field (with suggestion)           |
+| E0303 | sema  | struct/variant construction field errors  |
+| E0304 | sema  | unknown enum variant (with suggestion)    |
+| E0305 | sema  | pattern doesn't belong to value's type    |
+| E0306 | sema  | pattern binding count mismatch            |
+| E0307 | sema  | `switch` not exhaustive (lists missing)   |
+| E0308 | sema  | bare `null` needs a known `T?` type       |
+| E0309 | sema  | nested `T??` rejected                     |
+| E0310 | sema  | `T?` used where plain `T` expected        |
+| E0311 | sema  | static/instance method confusion          |
+| E0312 | sema  | value `==` unsupported (field detail)     |
+| L0301 | sema  | unreachable `switch` pattern arm (lint)   |
 
 ## Process for a new diagnostic
 

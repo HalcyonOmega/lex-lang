@@ -1,104 +1,11 @@
 # 06 — Decision ballots (owner's queue)
 
-Every open syntax/feature decision for M3–M14, grouped by when it's
-needed. Decide one group at a time — **a group must be fully decided
-before its milestone starts** (the plans in docs/plans/ are blocked on
-these IDs). Each ballot shows how Rust does it, where experts lean,
-where beginners lean, and a recommendation.
+Open syntax decisions for M3–M14. **Ratified choices live only in
+docs/02-syntax-decisions.md** — when you decide, agents add the row there
+and remove it from this file.
 
-**Fast path:** every recommendation below is mutually consistent. If you
-ratify all recommendations as-is, the language is coherent. To ratify:
-move the row into docs/02's Ratified section with your choice and log it.
-
-Recommendations optimize for the stated vision: minimal friction,
-beginner-digestible, but a language experts pick over Go/Zig/C/Rust.
-Where expert and beginner preferences conflict, the recommendation says
-which side it took and why.
-
----
-
-## Group 1 — Confirmations ✅ *(ratified 2026-06-11)*
-
-All items below are ratified in docs/02-syntax-decisions.md.
-
-| ID  | Decision |
-|-----|----------|
-| S4  | `name: Type` |
-| S5  | `//` comments |
-| S7  | `?` propagation |
-| S13 | symbol operators (`&&` `||` `!` `==` …) |
-| S15 | unwind default; `panic=abort` in `--small` |
-| S17 | all ten compound assignments |
-| S16 | **file + module imports; optional `as`** (owner refinement) |
-
-**S16 (owner refinement).** Two import forms, both with optional `as`:
-
-- **File:** `import "path" [as alias];` — path relative to the importing
-  file; default namespace = last path segment.
-- **Module:** `import name [as alias];` — search recursively from project
-  root for `name.lex` or `name/` module directory; default namespace =
-  `name`.
-
-Rejected: required alias, Rust `use`, bare `import;` alone.
-
----
-
-## Group 2 — Data & types (decide before M3)
-
-**S29 — Building a struct value.**
-- A. `Point { x: 1.0, y: 2.0 }` — Rust-style literal
-- B. `Point(x: 1.0, y: 2.0)` — call-style (Swift/Kotlin/Python)
-- C. require a `new` method always
-
-Rust: A. Experts: A or B equally; A visually separates "construction"
-from "call". Beginners: B looks like a function call they already know;
-A is one new shape learned once. → **A**, because it makes construction
-grep-ably distinct, matches the `struct` declaration shape, and frees
-`()` so *every* parenthesized thing is a real call. (Costs one parser
-disambiguation rule — handled in the M3 plan.)
-
-**S30 — Declaring enums & naming variants.**
-- A. `enum Shape { Circle(radius: Float); Rect(w: Float, h: Float); Empty; }`
-  with **named payload fields**, used as `Shape.Circle(2.0)`
-- B. Rust-style positional payloads `Circle(Float)`, used as `Shape::Circle(2.0)`
-- C. payload-free enums only in v1 (defer sum types)
-
-Rust: B with `::`. Experts: sum types are *the* feature they want from
-Rust; named fields read better in errors. Beginners: A — `Shape.Circle`
-uses the dot they already know from methods; named fields self-document.
-→ **A.** One separator (`.`) for everything; `::` never enters Lex.
-
-**S31 — Getting data out of an enum (patterns).**
-- A. `is` tests usable anywhere: `if s is Circle(r) { … }`, switch arms
-  `s is Circle(r) -> { … };` — exhaustiveness checked when arms cover
-  all variants (Kotlin/Swift flavored)
-- B. Rust-style `match` patterns as a new construct (rejected by S24)
-- C. no destructuring; accessor methods only
-
-Rust: `match`/`if let`. Experts: want full patterns; A covers 95% (one
-level deep) and composes with S24's condition arms (`s is Rect(w, h) &&
-w > h`). Beginners: A reads as English. → **A** — it extends `switch`
-instead of competing with it, and keeps one branching story.
-
-**S32 — Absence (no null, ever).**
-- A. `Int?` type, `some(v)` / `none` values (Swift/Kotlin spelling,
-  lowercase like `true`/`false`)
-- B. `Option[Int]` with `Some(v)` / `None` (Rust spelling)
-- C. both (rejected: S14, one spelling per construct)
-
-Rust: B. Experts: indifferent; `T?` is fewer keystrokes. Beginners: A —
-"`Int?` is an Int, maybe" is the whole lesson. → **A.** `some`/`none`
-lowercase because they're language-level like `true`, not library types.
-
-**S33 — Generic type argument brackets** (affects `List`, `Map`, `T or E`
-in M5 and user generics in M9).
-- A. `List[Int]` square brackets (Scala, Python typing, Go)
-- B. `List<Int>` angle brackets (Rust/C++/TS/Java)
-
-Rust: B. Experts: B is familiar but universally disliked for parsing
-ambiguity (`a < b > (c)`); Go chose A for exactly this reason. Beginners:
-A — brackets already mean "container stuff". → **A.** Zero ambiguity
-with `<` comparisons forever, and `lex` never needs a turbofish.
+Decide one group at a time. A group must be fully decided before its
+milestone starts (plans in docs/plans/ are blocked on these IDs).
 
 ---
 
@@ -116,8 +23,8 @@ Beginners: A by a mile. → **A.** The error side is any enum, struct, or
 
 **S35 — Handling errors without ceremony.**
 - A. `or` fallback expression: `parse(x) or 0`, `parse(x) or return`,
-  `parse(x) or panic("…")` — plus `is ok(v)` / `is err(e)` patterns and
-  `?` for propagation
+  `parse(x) or panic("…")` — plus **`== ok(v)` / `== err(e)`** patterns
+  (S31-style) and `?` for propagation
 - B. methods only: `.unwrap_or(0)`, `.expect("…")` (Rust)
 - C. patterns + `?` only, no fallback sugar
 
@@ -162,9 +69,9 @@ crisp.
 
 Rust: A. Experts: A — Option-returning indexing makes numeric code
 miserable. Beginners: A *with a great message* ("the list has 3 items,
-so position 99 doesn't exist") teaches better than a mystery `none`.
-→ **A** for lists and map reads (missing key = report; `m.get(k) or 0`
-is the safe idiom and the error message teaches it).
+so position 99 doesn't exist") teaches better than a mystery absent
+value. → **A** for lists and map reads (missing key = report;
+`m.get(k) or 0` is the safe idiom).
 
 **S40 — Slicing.** `xs[1..3]` inclusive (S22-consistent), copies the
 elements (tier 1: no exposed references). Rust: `&xs[1..3]` half-open
@@ -322,14 +229,14 @@ three lines. → **A.** Single files stay manifest-free forever (R9).
 
 ---
 
-## Tally sheet
+## Tally sheet (open only)
 
 | Group | IDs | Needed by | Status |
 |-------|-----|-----------|--------|
-| 1 Confirmations | S4 S5 S7 S13 S15 S16 S17 | now | ✅ |
-| 2 Data & types | S29 S30 S31 S32 S33 | M3 | ☐ |
 | 3 Errors | S34 S35 S36 | M4 | ☐ |
 | 4 Collections & strings | S37 S38 S39 S40 S41 S42 | M5 | ☐ |
 | 5 Tooling & FFI | S43 S44 S49 S50 | M6/M7 | ☐ |
 | 6 Functions & generics | S46 S47 S45 S28 S48 S26 | M8/M9 | ☐ |
 | 7 Platform | S51 S54 S53 S52 | M10–M12 | ☐ |
+
+Ratified (see docs/02): Group 1 confirmations; Group 2 — S29–S33.

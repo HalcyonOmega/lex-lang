@@ -67,8 +67,18 @@ pub const KW_VIEW: &str = "view";
 /// S10 (ratified M2, tier 2): field annotation — a stored reference.
 pub const KW_STORED: &str = "ref";
 
-/// M2: struct definition keyword.
+/// M2: struct definition keyword (construction spelling: S29).
 pub const KW_STRUCT: &str = "struct";
+
+/// S30 (ratified M3): sum-type definition keyword.
+pub const KW_ENUM: &str = "enum";
+
+/// S32 (ratified M3): optional type suffix — `Int?` is “maybe an Int”.
+pub const TYPE_OPTION_SUFFIX: &str = "?";
+
+/// S32 (ratified M3): present / absent spellings for `T?` (lowercase like `true`).
+pub const LIT_VALUE: &str = "value";
+pub const LIT_NULL: &str = "null";
 
 /// S27 (ratified M3): method receiver name.
 pub const KW_SELF: &str = "self";
@@ -184,6 +194,24 @@ pub const FOREIGN_TEXT: &str = "Text";
 
 /// S24: `match` recognized only for a teaching error naming `switch`.
 pub const FOREIGN_MATCH: &str = "match";
+
+/// S32 (ratified M3): foreign optional spellings for teaching error E0020.
+pub const FOREIGN_NONE: &str = "None";
+pub const FOREIGN_SOME: &str = "Some";
+pub const FOREIGN_NIL: &str = "nil";
+pub const FOREIGN_NONE_LOWER: &str = "none";
+pub const FOREIGN_SOME_LOWER: &str = "some";
+
+/// S29 (ratified M3): `class` recognized only for teaching error E0021.
+pub const FOREIGN_CLASS: &str = "class";
+
+/// S28 (deferred M9): foreign trait spellings for teaching error E0022.
+pub const FOREIGN_INTERFACE: &str = "interface";
+pub const FOREIGN_TRAIT: &str = "trait";
+
+/// S24 (ratified M3): foreign switch arm spellings for teaching error E0023.
+pub const FOREIGN_CASE: &str = "case";
+pub const FOREIGN_DEFAULT: &str = "default";
 
 /// S10 (ratified M2): foreign read/write forms for teaching errors.
 pub const FOREIGN_READ: &str = "read";

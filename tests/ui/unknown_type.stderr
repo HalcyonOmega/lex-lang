@@ -3,5 +3,5 @@ Error [E0119]: there's no type called `Strng`
     |
   2 |     val x: Strng = "hi";
     |            ^^^^^
- Why: the types are `Int`, `Float`, `Bool`, and `String` (plus structs you define)
- Fix: check the spelling, or define the struct first
+ Why: the types are `Int`, `Float`, `Bool`, and `String` (plus types you define)
+ Fix: check the spelling, or define the struct or enum first

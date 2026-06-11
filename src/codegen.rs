@@ -12,11 +12,11 @@
 //!   - every operator result is fully parenthesized
 
 use crate::ast::{
-    AccessConvention, ConstAttr, ElseBranch, Expr, Field, Func, IfStmt, Item, Program,
-    RustConstKind, Stmt, StrPart, StructDef, Type, UnOp,
+    AccessConvention, BinOp, ConstAttr, ElseBranch, EnumDef, EnumLitArg, Expr, Field, Func, IfStmt,
+    Item, Pattern, Program, RustConstKind, Stmt, StrPart, StructDef, Type, UnOp, VariantPayload,
 };
 use crate::syntax;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Emitted at the top of every program: one tiny display trait so codegen
 /// never needs to know a value's type to print it. Monomorphized by rustc;
@@ -37,20 +37,50 @@ fn mangle(name: &str) -> String {
     }
 }
 
-fn rust_type(ty: &Type) -> String {
-    match ty {
-        Type::Int => "i64".to_string(),
-        Type::Float => "f64".to_string(),
-        Type::Bool => "bool".to_string(),
-        Type::String => "String".to_string(),
-        Type::List(inner) => format!("Vec<{}>", rust_type(inner)),
-        Type::Shared(inner) => format!("std::sync::Arc<{}>", rust_type(inner)),
-        Type::Named(name) => format!("user_{}", name),
+/// Shared codegen context built once per program.
+struct Cx {
+    /// Top-level function name -> parameter conventions+types.
+    sigs: HashMap<String, Vec<(AccessConvention, Type)>>,
+    /// `(TypeName, method)` -> parameter conventions+types (including `self`).
+    method_sigs: HashMap<(String, String), Vec<(AccessConvention, Type)>>,
+    consts: HashMap<String, String>,
+    type_names: HashSet<String>,
+    struct_fields: HashMap<String, Vec<(String, Type)>>,
+    enum_variants: HashMap<String, Vec<(String, VariantPayload)>>,
+    /// variant name -> owning enum type (for pattern lowering)
+    variant_owner: HashMap<String, String>,
+    /// Recursive-type edges that need `Box<…>` in Rust (`(owner, edge_key)`).
+    boxed_edges: HashSet<(String, String)>,
+    cloneable: HashSet<String>,
+    comparable: HashSet<String>,
+}
+
+impl Cx {
+    fn field_rust_type(&self, owner: &str, edge: &str, ty: &Type) -> String {
+        let base = self.rust_type(ty);
+        if self.boxed_edges.contains(&(owner.to_string(), edge.to_string())) {
+            format!("Box<{}>", base)
+        } else {
+            base
+        }
+    }
+
+    fn rust_type(&self, ty: &Type) -> String {
+        match ty {
+            Type::Int => "i64".to_string(),
+            Type::Float => "f64".to_string(),
+            Type::Bool => "bool".to_string(),
+            Type::String => "String".to_string(),
+            Type::List(inner) => format!("Vec<{}>", self.rust_type(inner)),
+            Type::Shared(inner) => format!("std::sync::Arc<{}>", self.rust_type(inner)),
+            Type::Option(inner) => format!("Option<{}>", self.rust_type(inner)),
+            Type::Named(name) => format!("user_{}", name),
+        }
     }
 }
 
-fn rust_param_type(convention: AccessConvention, ty: &Type) -> String {
-    let base = rust_type(ty);
+fn rust_param_type(cx: &Cx, convention: AccessConvention, ty: &Type) -> String {
+    let base = cx.rust_type(ty);
     match convention {
         AccessConvention::Read if ty.is_scalar() => base,
         AccessConvention::Read => format!("&{}", base),
@@ -59,8 +89,8 @@ fn rust_param_type(convention: AccessConvention, ty: &Type) -> String {
     }
 }
 
-fn rust_return_type(ty: &Type, is_view: bool) -> String {
-    let base = rust_type(ty);
+fn rust_return_type(cx: &Cx, ty: &Type, is_view: bool) -> String {
+    let base = cx.rust_type(ty);
     if is_view {
         format!("&{}", base)
     } else {
@@ -74,12 +104,6 @@ struct Slot {
     rust_name: String,
     /// The Rust binding is a reference; emit `(*name)` to get the value.
     deref: bool,
-}
-
-struct Cx {
-    /// callee name -> parameter conventions+types (for call-site emission).
-    sigs: HashMap<String, Vec<(AccessConvention, Type)>>,
-    consts: HashMap<String, String>,
 }
 
 pub fn emit(prog: &Program) -> String {
@@ -97,10 +121,48 @@ pub fn emit(prog: &Program) -> String {
     out.push_str(PRELUDE);
     out.push('\n');
 
+    let mut cx = build_cx(prog);
+
+    for item in &prog.items {
+        match item {
+            Item::Struct(s) => emit_struct(&cx, s, &mut out),
+            Item::Enum(e) => emit_enum(&cx, e, &mut out),
+            Item::Const(c) => emit_const(c, &mut out),
+            Item::Func(_) | Item::Impl(_) => {}
+        }
+    }
+
+    for item in &prog.items {
+        match item {
+            Item::Struct(s) => emit_type_impl(&cx, &s.name, &s.methods, &mut out),
+            Item::Enum(e) => emit_type_impl(&cx, &e.name, &e.methods, &mut out),
+            Item::Impl(i) => emit_type_impl(&cx, &i.type_name, &i.methods, &mut out),
+            _ => {}
+        }
+    }
+
+    for item in &prog.items {
+        if let Item::Func(f) = item {
+            emit_func(&cx, f, &mut out);
+        }
+    }
+    out
+}
+
+fn build_cx(prog: &Program) -> Cx {
     let mut cx = Cx {
         sigs: HashMap::new(),
+        method_sigs: HashMap::new(),
         consts: HashMap::new(),
+        type_names: HashSet::new(),
+        struct_fields: HashMap::new(),
+        enum_variants: HashMap::new(),
+        variant_owner: HashMap::new(),
+        boxed_edges: HashSet::new(),
+        cloneable: HashSet::new(),
+        comparable: HashSet::new(),
     };
+
     for item in &prog.items {
         match item {
             Item::Func(f) => {
@@ -112,28 +174,234 @@ pub fn emit(prog: &Program) -> String {
                         .collect(),
                 );
             }
+            Item::Struct(s) => {
+                cx.type_names.insert(s.name.clone());
+                cx.struct_fields.insert(
+                    s.name.clone(),
+                    s.fields
+                        .iter()
+                        .filter(|f| !f.is_stored_ref)
+                        .map(|f| (f.name.clone(), f.ty.clone()))
+                        .collect(),
+                );
+            }
+            Item::Enum(e) => {
+                cx.type_names.insert(e.name.clone());
+                cx.enum_variants.insert(
+                    e.name.clone(),
+                    e.variants
+                        .iter()
+                        .map(|v| (v.name.clone(), v.payload.clone()))
+                        .collect(),
+                );
+                for v in &e.variants {
+                    cx.variant_owner
+                        .insert(v.name.clone(), e.name.clone());
+                }
+            }
             Item::Const(c) => {
                 cx.consts
                     .insert(c.name.clone(), mangle(&c.name).to_uppercase());
             }
-            Item::Struct(_) => {}
+            Item::Impl(_) => {}
         }
     }
 
     for item in &prog.items {
         match item {
-            Item::Struct(s) => emit_struct(s, &mut out),
-            Item::Const(c) => emit_const(c, &mut out),
-            Item::Func(_) => {}
+            Item::Struct(s) => {
+                cx.boxed_edges.extend(find_struct_box_edges(s, &cx));
+                if type_is_cloneable_struct(s, &cx.type_names) {
+                    cx.cloneable.insert(s.name.clone());
+                }
+                if type_is_comparable_struct(s, &cx.type_names) {
+                    cx.comparable.insert(s.name.clone());
+                }
+                for m in &s.methods {
+                    cx.method_sigs.insert(
+                        (s.name.clone(), m.name.clone()),
+                        m.params
+                            .iter()
+                            .map(|p| (p.convention, p.ty.clone()))
+                            .collect(),
+                    );
+                }
+            }
+            Item::Enum(e) => {
+                cx.boxed_edges.extend(find_enum_box_edges(e, &cx));
+                if type_is_cloneable_enum(e, &cx.type_names) {
+                    cx.cloneable.insert(e.name.clone());
+                }
+                if type_is_comparable_enum(e, &cx.type_names) {
+                    cx.comparable.insert(e.name.clone());
+                }
+                for m in &e.methods {
+                    cx.method_sigs.insert(
+                        (e.name.clone(), m.name.clone()),
+                        m.params
+                            .iter()
+                            .map(|p| (p.convention, p.ty.clone()))
+                            .collect(),
+                    );
+                }
+            }
+            Item::Impl(i) => {
+                for m in &i.methods {
+                    cx.method_sigs.insert(
+                        (i.type_name.clone(), m.name.clone()),
+                        m.params
+                            .iter()
+                            .map(|p| (p.convention, p.ty.clone()))
+                            .collect(),
+                    );
+                }
+            }
+            _ => {}
         }
     }
 
-    for item in &prog.items {
-        if let Item::Func(f) = item {
-            emit_func(&cx, f, &mut out);
+    cx
+}
+
+fn type_is_cloneable_struct(s: &StructDef, types: &HashSet<String>) -> bool {
+    s.fields
+        .iter()
+        .all(|f| !f.is_stored_ref && field_type_cloneable(&f.ty, types))
+}
+
+fn type_is_cloneable_enum(e: &EnumDef, types: &HashSet<String>) -> bool {
+    e.variants.iter().all(|v| match &v.payload {
+        VariantPayload::Unit => true,
+        VariantPayload::Single(t, _) => field_type_cloneable(t, types),
+        VariantPayload::Named(fs) => fs.iter().all(|f| field_type_cloneable(&f.ty, types)),
+    })
+}
+
+fn field_type_cloneable(ty: &Type, types: &HashSet<String>) -> bool {
+    match ty {
+        Type::Int | Type::Bool | Type::Float | Type::String => true,
+        Type::List(inner) | Type::Shared(inner) | Type::Option(inner) => {
+            field_type_cloneable(inner, types)
+        }
+        Type::Named(n) => types.contains(n),
+    }
+}
+
+fn type_is_comparable_struct(s: &StructDef, types: &HashSet<String>) -> bool {
+    s.fields
+        .iter()
+        .all(|f| !f.is_stored_ref && field_type_comparable(&f.ty, types))
+}
+
+fn type_is_comparable_enum(e: &EnumDef, types: &HashSet<String>) -> bool {
+    e.variants.iter().all(|v| match &v.payload {
+        VariantPayload::Unit => true,
+        VariantPayload::Single(t, _) => field_type_comparable(t, types),
+        VariantPayload::Named(fs) => fs.iter().all(|f| field_type_comparable(&f.ty, types)),
+    })
+}
+
+fn field_type_comparable(ty: &Type, types: &HashSet<String>) -> bool {
+    match ty {
+        Type::Int | Type::Bool | Type::Float | Type::String => true,
+        Type::Option(inner) => field_type_comparable(inner, types),
+        Type::Named(n) => types.contains(n),
+        Type::List(_) | Type::Shared(_) => false,
+    }
+}
+
+fn find_struct_box_edges(s: &StructDef, cx: &Cx) -> HashSet<(String, String)> {
+    let mut boxed = HashSet::new();
+    for f in &s.fields {
+        if f.is_stored_ref {
+            continue;
+        }
+        walk_type_edge(
+            &s.name,
+            &f.name,
+            &f.ty,
+            &mut vec![s.name.clone()],
+            cx,
+            &mut boxed,
+        );
+    }
+    boxed
+}
+
+fn find_enum_box_edges(e: &EnumDef, cx: &Cx) -> HashSet<(String, String)> {
+    let mut boxed = HashSet::new();
+    for v in &e.variants {
+        match &v.payload {
+            VariantPayload::Unit => {}
+            VariantPayload::Single(t, _) => walk_type_edge(
+                &e.name,
+                &v.name,
+                t,
+                &mut vec![e.name.clone()],
+                cx,
+                &mut boxed,
+            ),
+            VariantPayload::Named(fs) => {
+                for f in fs {
+                    let key = format!("{}.{}", v.name, f.name);
+                    walk_type_edge(
+                        &e.name,
+                        &key,
+                        &f.ty,
+                        &mut vec![e.name.clone()],
+                        cx,
+                        &mut boxed,
+                    );
+                }
+            }
         }
     }
-    out
+    boxed
+}
+
+fn walk_type_edge(
+    owner: &str,
+    edge: &str,
+    ty: &Type,
+    stack: &mut Vec<String>,
+    cx: &Cx,
+    boxed: &mut HashSet<(String, String)>,
+) {
+    match ty {
+        Type::Named(n) if cx.type_names.contains(n) => {
+            if stack.iter().any(|s| s == n) {
+                boxed.insert((owner.to_string(), edge.to_string()));
+                return;
+            }
+            stack.push(n.clone());
+            if let Some(fields) = cx.struct_fields.get(n) {
+                for (fname, fty) in fields {
+                    walk_type_edge(n, fname, fty, stack, cx, boxed);
+                }
+            }
+            if let Some(vars) = cx.enum_variants.get(n) {
+                for (vname, payload) in vars {
+                    match payload {
+                        VariantPayload::Unit => {}
+                        VariantPayload::Single(t, _) => {
+                            walk_type_edge(n, vname, t, stack, cx, boxed);
+                        }
+                        VariantPayload::Named(fs) => {
+                            for f in fs {
+                                let key = format!("{}.{}", vname, f.name);
+                                walk_type_edge(n, &key, &f.ty, stack, cx, boxed);
+                            }
+                        }
+                    }
+                }
+            }
+            stack.pop();
+        }
+        Type::Option(inner) | Type::List(inner) | Type::Shared(inner) => {
+            walk_type_edge(owner, edge, inner, stack, cx, boxed);
+        }
+        _ => {}
+    }
 }
 
 fn struct_lifetimes(fields: &[Field]) -> Vec<String> {
@@ -153,7 +421,7 @@ fn struct_lifetimes(fields: &[Field]) -> Vec<String> {
     labels
 }
 
-fn emit_struct(s: &StructDef, out: &mut String) {
+fn emit_struct(cx: &Cx, s: &StructDef, out: &mut String) {
     let lifetimes = struct_lifetimes(&s.fields);
     let lt_params = if lifetimes.is_empty() {
         String::new()
@@ -167,20 +435,165 @@ fn emit_struct(s: &StructDef, out: &mut String) {
                 .join(", ")
         )
     };
-    out.push_str(&format!("struct user_{}{} {{\n", s.name, lt_params));
+    let mut derives = vec!["Debug"];
+    if cx.cloneable.contains(&s.name) {
+        derives.push("Clone");
+    }
+    if cx.comparable.contains(&s.name) {
+        derives.push("PartialEq");
+    }
+    out.push_str(&format!(
+        "#[derive({})]\nstruct user_{}{} {{\n",
+        derives.join(", "),
+        s.name,
+        lt_params
+    ));
     for f in &s.fields {
         let field_ty = if f.is_stored_ref {
             let label = f
                 .stored_ref_label
                 .clone()
                 .unwrap_or_else(|| "src".to_string());
-            format!("&'{} {}", label, rust_type(&f.ty))
+            format!("&'{} {}", label, cx.rust_type(&f.ty))
         } else {
-            rust_type(&f.ty)
+            cx.field_rust_type(&s.name, &f.name, &f.ty)
         };
         out.push_str(&format!("    {}: {},\n", mangle(&f.name), field_ty));
     }
     out.push_str("}\n\n");
+    if lifetimes.is_empty() {
+        out.push_str(&format!(
+            "impl LexShow for user_{} {{\n    fn lex_show(&self) -> String {{ format!(\"{{:?}}\", self) }}\n}}\n\n",
+            s.name
+        ));
+    } else {
+        let lt = lifetimes
+            .iter()
+            .map(|l| format!("'{}", l))
+            .collect::<Vec<_>>()
+            .join(", ");
+        out.push_str(&format!(
+            "impl<{}> LexShow for user_{}<{}> {{\n    fn lex_show(&self) -> String {{ format!(\"{{:?}}\", self) }}\n}}\n\n",
+            lt, s.name, lt
+        ));
+    }
+}
+
+fn emit_enum(cx: &Cx, e: &EnumDef, out: &mut String) {
+    let mut derives = vec!["Debug"];
+    if cx.cloneable.contains(&e.name) {
+        derives.push("Clone");
+    }
+    if cx.comparable.contains(&e.name) {
+        derives.push("PartialEq");
+    }
+    out.push_str(&format!("#[derive({})]\nenum user_{} {{\n", derives.join(", "), e.name));
+    for v in &e.variants {
+        match &v.payload {
+            VariantPayload::Unit => {
+                out.push_str(&format!("    {},\n", mangle(&v.name)));
+            }
+            VariantPayload::Single(t, _) => {
+                let ty = cx.field_rust_type(&e.name, &v.name, t);
+                out.push_str(&format!("    {}({}),\n", mangle(&v.name), ty));
+            }
+            VariantPayload::Named(fs) => {
+                out.push_str(&format!("    {} {{\n", mangle(&v.name)));
+                for f in fs {
+                    let key = format!("{}.{}", v.name, f.name);
+                    let ty = cx.field_rust_type(&e.name, &key, &f.ty);
+                    out.push_str(&format!("        {}: {},\n", mangle(&f.name), ty));
+                }
+                out.push_str("    },\n");
+            }
+        }
+    }
+    out.push_str("}\n\n");
+    out.push_str(&format!(
+        "impl LexShow for user_{} {{\n    fn lex_show(&self) -> String {{ format!(\"{{:?}}\", self) }}\n}}\n\n",
+        e.name
+    ));
+}
+
+fn emit_type_impl(cx: &Cx, type_name: &str, methods: &[Func], out: &mut String) {
+    if methods.is_empty() {
+        return;
+    }
+    out.push_str(&format!("impl user_{} {{\n", type_name));
+    for m in methods {
+        emit_method(cx, type_name, m, out, 1);
+    }
+    out.push_str("}\n\n");
+}
+
+fn emit_method(cx: &Cx, type_name: &str, f: &Func, out: &mut String, indent: usize) {
+    let pad = "    ".repeat(indent);
+    let ret = f
+        .return_type
+        .as_ref()
+        .map(|t| rust_return_type(cx, t, f.is_view_return))
+        .unwrap_or_default();
+    let ret_clause = if ret.is_empty() {
+        String::new()
+    } else {
+        format!(" -> {}", ret)
+    };
+    let params = f
+        .params
+        .iter()
+        .map(|p| {
+            if p.name == syntax::KW_SELF {
+                match p.convention {
+                    AccessConvention::Read => "&self".to_string(),
+                    AccessConvention::Mutate => "&mut self".to_string(),
+                    AccessConvention::Move => "self".to_string(),
+                }
+            } else {
+                format!(
+                    "{}: {}",
+                    mangle(&p.name),
+                    rust_param_type(cx, p.convention, &p.ty)
+                )
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    out.push_str(&format!(
+        "{}{}fn {}({}){} {{\n",
+        pad,
+        if f.is_pub { "pub " } else { "" },
+        mangle(&f.name),
+        params,
+        ret_clause
+    ));
+    let mut env: HashMap<String, Slot> = HashMap::new();
+    for p in &f.params {
+        if p.name == syntax::KW_SELF {
+            env.insert(
+                syntax::KW_SELF.to_string(),
+                Slot {
+                    rust_name: "self".to_string(),
+                    deref: false,
+                },
+            );
+            continue;
+        }
+        let deref = match p.convention {
+            AccessConvention::Read => !p.ty.is_scalar(),
+            AccessConvention::Mutate => true,
+            AccessConvention::Move => false,
+        };
+        env.insert(
+            p.name.clone(),
+            Slot {
+                rust_name: mangle(&p.name),
+                deref,
+            },
+        );
+    }
+    emit_stmts(cx, &f.body, &mut env, out, indent + 1, f.is_view_return);
+    out.push_str(&format!("{}}}\n", pad));
+    let _ = type_name;
 }
 
 fn emit_const(c: &crate::ast::ConstDef, out: &mut String) {
@@ -188,7 +601,6 @@ fn emit_const(c: &crate::ast::ConstDef, out: &mut String) {
         Expr::Int(n, _) => (format!("{}i64", n), "i64"),
         Expr::Float(v, _) => (format!("{:?}f64", v), "f64"),
         Expr::Bool(b, _) => (b.to_string(), "bool"),
-        // sema rejects anything else; keep emission total anyway.
         _ => ("0i64".to_string(), "i64"),
     };
     let inline = if c.attrs.contains(&ConstAttr::ForceInline) {
@@ -214,7 +626,7 @@ fn emit_func(cx: &Cx, f: &Func, out: &mut String) {
     let ret = f
         .return_type
         .as_ref()
-        .map(|t| rust_return_type(t, f.is_view_return))
+        .map(|t| rust_return_type(cx, t, f.is_view_return))
         .unwrap_or_default();
     let ret_clause = if ret.is_empty() {
         String::new()
@@ -228,7 +640,7 @@ fn emit_func(cx: &Cx, f: &Func, out: &mut String) {
             format!(
                 "{}: {}",
                 mangle(&p.name),
-                rust_param_type(p.convention, &p.ty)
+                rust_param_type(cx, p.convention, &p.ty)
             )
         })
         .collect::<Vec<_>>()
@@ -336,7 +748,6 @@ fn emit_stmt(
             body,
             ..
         } => {
-            // S22: both ends included -> Rust `..=`.
             let s = emit_expr(cx, start, env);
             let e = emit_expr(cx, end, env);
             out.push_str(&format!(
@@ -370,32 +781,11 @@ fn emit_stmt(
             else_body,
             ..
         } => {
-            // S24: evaluate the subject once, then run the first true arm.
-            out.push_str(&format!("{}{{\n", pad));
-            let inner_pad = "    ".repeat(indent + 1);
-            out.push_str(&format!(
-                "{}let _lex_switch_subject = &({});\n",
-                inner_pad,
-                emit_expr(cx, subject, env)
-            ));
-            for (i, arm) in arms.iter().enumerate() {
-                let kw = if i == 0 { "if" } else { "} else if" };
-                out.push_str(&format!(
-                    "{}{} {} {{\n",
-                    inner_pad,
-                    kw,
-                    emit_expr(cx, &arm.cond, env)
-                ));
-                emit_stmts(cx, &arm.body, env, out, indent + 2, view_return);
-            }
-            if arms.is_empty() {
-                emit_stmts(cx, else_body, env, out, indent + 1, view_return);
+            if is_exhaustive_pattern_switch(subject, arms) {
+                emit_pattern_match_switch(cx, subject, arms, else_body, env, out, indent);
             } else {
-                out.push_str(&format!("{}}} else {{\n", inner_pad));
-                emit_stmts(cx, else_body, env, out, indent + 2, view_return);
-                out.push_str(&format!("{}}}\n", inner_pad));
+                emit_mixed_switch(cx, subject, arms, else_body, env, out, indent, view_return);
             }
-            out.push_str(&format!("{}}}\n", pad));
         }
         Stmt::Break(_) => out.push_str(&format!("{}break;\n", pad)),
         Stmt::Continue(_) => out.push_str(&format!("{}continue;\n", pad)),
@@ -409,6 +799,201 @@ fn emit_stmt(
             emit_stmts(cx, inner, env, out, indent + 1, view_return);
             out.push_str(&format!("{}}}\n", pad));
         }
+    }
+}
+
+fn is_exhaustive_pattern_switch(subject: &Expr, arms: &[crate::ast::SwitchArm]) -> bool {
+    !arms.is_empty()
+        && arms.iter().all(|a| {
+            matches!(
+                &a.cond,
+                Expr::PatternTest { subject: s, .. } if pattern_subjects_match(s, subject)
+            )
+        })
+}
+
+fn pattern_subjects_match(a: &Expr, b: &Expr) -> bool {
+    match (a, b) {
+        (Expr::Ident(na, _), Expr::Ident(nb, _)) => na == nb,
+        _ => false,
+    }
+}
+
+fn emit_pattern_match_switch(
+    cx: &Cx,
+    subject: &Expr,
+    arms: &[crate::ast::SwitchArm],
+    else_body: &Option<Vec<Stmt>>,
+    env: &mut HashMap<String, Slot>,
+    out: &mut String,
+    indent: usize,
+) {
+    let pad = "    ".repeat(indent);
+    let subj = emit_expr(cx, subject, env);
+    let enum_type = arms.iter().find_map(|a| {
+        if let Expr::PatternTest {
+            pattern: Pattern::Variant { variant, .. },
+            ..
+        } = &a.cond
+        {
+            cx.variant_owner.get(variant).cloned()
+        } else {
+            None
+        }
+    });
+    out.push_str(&format!("{}match {} {{\n", pad, subj));
+    for arm in arms {
+        if let Expr::PatternTest { pattern, .. } = &arm.cond {
+            let pat = emit_match_pattern(cx, pattern, enum_type.as_deref());
+            out.push_str(&format!("{}    {} => {{\n", pad, pat));
+            emit_stmts(cx, &arm.body, env, out, indent + 2, false);
+            out.push_str(&format!("{}    }}\n", pad));
+        }
+    }
+    if let Some(body) = else_body {
+        out.push_str(&format!("{}    _ => {{\n", pad));
+        emit_stmts(cx, body, env, out, indent + 2, false);
+        out.push_str(&format!("{}    }}\n", pad));
+    }
+    out.push_str(&format!("{}}}\n", pad));
+}
+
+fn emit_mixed_switch(
+    cx: &Cx,
+    subject: &Expr,
+    arms: &[crate::ast::SwitchArm],
+    else_body: &Option<Vec<Stmt>>,
+    env: &mut HashMap<String, Slot>,
+    out: &mut String,
+    indent: usize,
+    view_return: bool,
+) {
+    let pad = "    ".repeat(indent);
+    out.push_str(&format!("{}{{\n", pad));
+    let inner_pad = "    ".repeat(indent + 1);
+    out.push_str(&format!(
+        "{}let _lex_switch_subject = &({});\n",
+        inner_pad,
+        emit_expr(cx, subject, env)
+    ));
+    for (i, arm) in arms.iter().enumerate() {
+        let kw = if i == 0 { "if" } else { "} else if" };
+        out.push_str(&format!(
+            "{}{} {} {{\n",
+            inner_pad,
+            kw,
+            emit_switch_arm_cond(cx, &arm.cond, env)
+        ));
+        emit_stmts(cx, &arm.body, env, out, indent + 2, view_return);
+    }
+    match else_body {
+        None if !arms.is_empty() => {
+            out.push_str(&format!("{}}}\n", inner_pad));
+        }
+        None => {}
+        Some(body) if arms.is_empty() => {
+            emit_stmts(cx, body, env, out, indent + 1, view_return);
+        }
+        Some(body) => {
+            out.push_str(&format!("{}}} else {{\n", inner_pad));
+            emit_stmts(cx, body, env, out, indent + 2, view_return);
+            out.push_str(&format!("{}}}\n", inner_pad));
+        }
+    }
+    out.push_str(&format!("{}}}\n", pad));
+}
+
+fn emit_switch_arm_cond(cx: &Cx, cond: &Expr, env: &HashMap<String, Slot>) -> String {
+    match cond {
+        Expr::PatternTest { subject, pattern, .. } => {
+            let subj = emit_expr(cx, subject, env);
+            emit_pattern_matches(cx, &subj, pattern)
+        }
+        other => emit_expr(cx, other, env),
+    }
+}
+
+fn enum_type_prefix(cx: &Cx, variant: &str) -> String {
+    cx.variant_owner
+        .get(variant)
+        .map(|t| format!("user_{}", t))
+        .unwrap_or_else(|| "user_TYPE".to_string())
+}
+
+fn emit_pattern_matches(cx: &Cx, subject: &str, pattern: &Pattern) -> String {
+    match pattern {
+        Pattern::Variant {
+            variant,
+            bindings,
+            ..
+        } => {
+            let prefix = enum_type_prefix(cx, variant);
+            if bindings.is_empty() {
+                format!("matches!({}, {}::{})", subject, prefix, mangle(variant))
+            } else if bindings.len() == 1 {
+                format!(
+                    "matches!({}, {}::{}({}))",
+                    subject,
+                    prefix,
+                    mangle(variant),
+                    mangle(&bindings[0])
+                )
+            } else {
+                let b = bindings
+                    .iter()
+                    .map(|n| mangle(n))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!(
+                    "matches!({}, {}::{} {{ {} }})",
+                    subject,
+                    prefix,
+                    mangle(variant),
+                    bindings
+                        .iter()
+                        .map(|n| format!("{}: {}", mangle(n), mangle(n)))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            }
+        }
+        Pattern::Present { binding, .. } => {
+            format!("matches!({}, Some({}))", subject, mangle(binding))
+        }
+        Pattern::Absent(_) => format!("({}).is_none()", subject),
+    }
+}
+
+fn emit_match_pattern(_cx: &Cx, pattern: &Pattern, enum_type: Option<&str>) -> String {
+    let prefix = enum_type
+        .map(|t| format!("user_{}", t))
+        .unwrap_or_else(|| "user_TYPE".to_string());
+    match pattern {
+        Pattern::Variant {
+            variant,
+            bindings,
+            ..
+        } => {
+            if bindings.is_empty() {
+                format!("{}::{}", prefix, mangle(variant))
+            } else if bindings.len() == 1 {
+                format!(
+                    "{}::{}({})",
+                    prefix,
+                    mangle(variant),
+                    mangle(&bindings[0])
+                )
+            } else {
+                let fields = bindings
+                    .iter()
+                    .map(|b| format!("{}: {}", mangle(b), mangle(b)))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("{}::{} {{ {} }}", prefix, mangle(variant), fields)
+            }
+        }
+        Pattern::Present { binding, .. } => format!("Some({})", mangle(binding)),
+        Pattern::Absent(_) => "None".to_string(),
     }
 }
 
@@ -440,8 +1025,26 @@ fn emit_if(
     view_return: bool,
 ) {
     let pad = "    ".repeat(indent);
-    out.push_str(&format!("{}if {} {{\n", pad, emit_expr(cx, &ifs.cond, env)));
-    emit_stmts(cx, &ifs.then_body, env, out, indent + 1, view_return);
+    if let Some((pat, subj)) = if_pattern_test(&ifs.cond) {
+        let subj_expr = emit_expr(cx, subj, env);
+        let pat_str = emit_if_let_pattern(cx, pat);
+        out.push_str(&format!("{}if let {} = {} {{\n", pad, pat_str, subj_expr));
+        let mut body_env = env.clone();
+        add_pattern_bindings(pat, &mut body_env);
+        emit_stmts(cx, &ifs.then_body, &mut body_env, out, indent + 1, view_return);
+    } else if let Expr::PatternTest {
+        subject,
+        pattern: Pattern::Absent(_),
+        ..
+    } = &ifs.cond
+    {
+        let subj = emit_expr(cx, subject, env);
+        out.push_str(&format!("{}if {}.is_none() {{\n", pad, subj));
+        emit_stmts(cx, &ifs.then_body, env, out, indent + 1, view_return);
+    } else {
+        out.push_str(&format!("{}if {} {{\n", pad, emit_expr(cx, &ifs.cond, env)));
+        emit_stmts(cx, &ifs.then_body, env, out, indent + 1, view_return);
+    }
     match &ifs.else_branch {
         None => out.push_str(&format!("{}}}\n", pad)),
         Some(ElseBranch::Else(body)) => {
@@ -451,13 +1054,95 @@ fn emit_if(
         }
         Some(ElseBranch::ElseIf(next)) => {
             out.push_str(&format!("{}}} else ", pad));
-            // Re-emit the nested if at column 0 of this line.
             let mut nested = String::new();
             emit_if(cx, next, env, &mut nested, indent, view_return);
-            // Trim the pad the nested emit added so it joins `else `.
             let trimmed = nested.trim_start_matches(&pad).to_string();
             out.push_str(&trimmed);
         }
+    }
+}
+
+fn if_pattern_test(cond: &Expr) -> Option<(&Pattern, &Expr)> {
+    match cond {
+        Expr::PatternTest { subject, pattern, .. } => match pattern {
+            Pattern::Absent(_) => None,
+            _ => Some((pattern, subject.as_ref())),
+        },
+        Expr::Binary(BinOp::And, l, r, _) => {
+            if let Expr::PatternTest {
+                subject,
+                pattern,
+                ..
+            } = l.as_ref()
+            {
+                if matches!(pattern, Pattern::Absent(_)) {
+                    return None;
+                }
+                if let Expr::PatternTest { .. } = r.as_ref() {
+                    return None;
+                }
+                return Some((pattern, subject.as_ref()));
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn add_pattern_bindings(pattern: &Pattern, env: &mut HashMap<String, Slot>) {
+    match pattern {
+        Pattern::Present { binding, .. } => {
+            env.insert(
+                binding.clone(),
+                Slot {
+                    rust_name: mangle(binding),
+                    deref: false,
+                },
+            );
+        }
+        Pattern::Variant { bindings, .. } => {
+            for b in bindings {
+                env.insert(
+                    b.clone(),
+                    Slot {
+                        rust_name: mangle(b),
+                        deref: false,
+                    },
+                );
+            }
+        }
+        Pattern::Absent(_) => {}
+    }
+}
+
+fn emit_if_let_pattern(cx: &Cx, pattern: &Pattern) -> String {
+    match pattern {
+        Pattern::Variant {
+            variant,
+            bindings,
+            ..
+        } => {
+            let prefix = enum_type_prefix(cx, variant);
+            if bindings.is_empty() {
+                format!("{}::{}", prefix, mangle(variant))
+            } else if bindings.len() == 1 {
+                format!(
+                    "{}::{}({})",
+                    prefix,
+                    mangle(variant),
+                    mangle(&bindings[0])
+                )
+            } else {
+                let fields = bindings
+                    .iter()
+                    .map(|b| format!("{}: {}", mangle(b), mangle(b)))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("{}::{} {{ {} }}", prefix, mangle(variant), fields)
+            }
+        }
+        Pattern::Present { binding, .. } => format!("Some({})", mangle(binding)),
+        Pattern::Absent(_) => "None".to_string(),
     }
 }
 
@@ -469,7 +1154,6 @@ fn place_of(env: &HashMap<String, Slot>, name: &str) -> String {
     }
 }
 
-/// A call in statement position.
 fn emit_expr_stmt(cx: &Cx, e: &Expr, env: &HashMap<String, Slot>) -> String {
     emit_expr(cx, e, env)
 }
@@ -500,15 +1184,190 @@ fn emit_expr(cx: &Cx, e: &Expr, env: &HashMap<String, Slot>) -> String {
         }
         Expr::Call(call) => emit_call(cx, call, env),
         Expr::Deref(inner, _) => format!("*{}", emit_expr(cx, inner, env)),
-        Expr::Member(inner, member, _) => {
-            // Only `.clone()` reaches codegen before M3 (sema enforces).
-            format!("({}).{}()", emit_expr(cx, inner, env), member)
+        Expr::Field(inner, member, _) => {
+            if member == "clone" {
+                format!("({}).clone()", emit_expr(cx, inner, env))
+            } else if let Expr::Ident(type_name, _) = &**inner {
+                if cx.enum_variants.contains_key(type_name) {
+                    format!("user_{}::{}", type_name, mangle(member))
+                } else {
+                    format!(
+                        "({}).{}",
+                        emit_expr(cx, inner, env),
+                        mangle(member)
+                    )
+                }
+            } else {
+                format!(
+                    "({}).{}",
+                    emit_expr(cx, inner, env),
+                    mangle(member)
+                )
+            }
+        }
+        Expr::MethodCall {
+            receiver,
+            method,
+            args,
+            ..
+        } => emit_method_call(cx, receiver, method, args, env),
+        Expr::StructLit {
+            type_name,
+            fields,
+            ..
+        } => {
+            let parts = fields
+                .iter()
+                .map(|(n, _, e)| format!("{}: {}", mangle(n), emit_expr(cx, e, env)))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("user_{} {{ {} }}", type_name, parts)
+        }
+        Expr::EnumLit {
+            type_name,
+            variant,
+            args,
+            ..
+        } => emit_enum_lit(cx, type_name, variant, args, env),
+        Expr::Present(inner, _) => format!("Some({})", emit_expr(cx, inner, env)),
+        Expr::Absent(_) => "None".to_string(),
+        Expr::PatternTest { subject, pattern, .. } => {
+            let subj = emit_expr(cx, subject, env);
+            emit_pattern_matches(cx, &subj, pattern)
         }
     }
 }
 
-/// String literal with interpolation: build the String piece by piece —
-/// no format-string escaping pitfalls (S8/S20).
+fn emit_boxed_enum_arg(
+    cx: &Cx,
+    type_name: &str,
+    edge: &str,
+    expr: &Expr,
+    env: &HashMap<String, Slot>,
+) -> String {
+    let s = emit_expr(cx, expr, env);
+    if cx
+        .boxed_edges
+        .contains(&(type_name.to_string(), edge.to_string()))
+    {
+        format!("Box::new({})", s)
+    } else {
+        s
+    }
+}
+
+fn emit_enum_lit(
+    cx: &Cx,
+    type_name: &str,
+    variant: &str,
+    args: &[EnumLitArg],
+    env: &HashMap<String, Slot>,
+) -> String {
+    let prefix = format!("user_{}::{}", type_name, mangle(variant));
+    if args.is_empty() {
+        return prefix;
+    }
+    if args.iter().all(|a| matches!(a, EnumLitArg::Positional(_))) {
+        let pos = args
+            .iter()
+            .map(|a| match a {
+                EnumLitArg::Positional(e) => {
+                    emit_boxed_enum_arg(cx, type_name, variant, e, env)
+                }
+                _ => unreachable!(),
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        return format!("{}({})", prefix, pos);
+    }
+    let fields = args
+        .iter()
+        .map(|a| match a {
+            EnumLitArg::Named { label, expr } => {
+                let edge = format!("{}.{}", variant, label);
+                format!(
+                    "{}: {}",
+                    mangle(label),
+                    emit_boxed_enum_arg(cx, type_name, &edge, expr, env)
+                )
+            }
+            EnumLitArg::Positional(e) => emit_expr(cx, e, env),
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("{} {{ {} }}", prefix, fields)
+}
+
+fn emit_method_call(
+    cx: &Cx,
+    receiver: &Expr,
+    method: &str,
+    args: &[crate::ast::CallArg],
+    env: &HashMap<String, Slot>,
+) -> String {
+    if method == "clone" {
+        return format!("({}).clone()", emit_expr(cx, receiver, env));
+    }
+    if let Expr::Ident(type_name, _) = receiver {
+        if let Some(variants) = cx.enum_variants.get(type_name) {
+            if variants.iter().any(|(v, _)| v == method) {
+                let enum_args: Vec<EnumLitArg> = args
+                    .iter()
+                    .map(|a| EnumLitArg::Positional(a.expr.clone()))
+                    .collect();
+                return emit_enum_lit(cx, type_name, method, &enum_args, env);
+            }
+        }
+        if cx.type_names.contains(type_name) {
+            let arg_str = emit_call_args(cx, None, args, env);
+            return format!(
+                "user_{}::{}({})",
+                type_name,
+                mangle(method),
+                arg_str
+            );
+        }
+    }
+    let recv = emit_expr(cx, receiver, env);
+    let sig = receiver_type_name(receiver, cx)
+        .and_then(|t| cx.method_sigs.get(&(t, method.to_string())));
+    let arg_str = emit_call_args(cx, sig.map(|s| s.as_slice()), args, env);
+    format!("({}).{}({})", recv, mangle(method), arg_str)
+}
+
+fn receiver_type_name(receiver: &Expr, cx: &Cx) -> Option<String> {
+    match receiver {
+        Expr::Ident(n, _) if cx.type_names.contains(n) => Some(n.clone()),
+        _ => None,
+    }
+}
+
+fn emit_call_args(
+    cx: &Cx,
+    sig: Option<&[(AccessConvention, Type)]>,
+    args: &[crate::ast::CallArg],
+    env: &HashMap<String, Slot>,
+) -> String {
+    args.iter()
+        .enumerate()
+        .map(|(i, a)| {
+            let mut s = emit_expr(cx, &a.expr, env);
+            if a.flags.implicit_clone {
+                s = format!("({}).clone()", s);
+            } else if a.flags.shared_auto_clone {
+                s = format!("std::sync::Arc::clone(&{})", s);
+            }
+            let conv = sig.and_then(|ps| ps.get(i)).map(|(c, t)| (*c, t.clone()));
+            match conv {
+                Some((AccessConvention::Read, t)) if !t.is_scalar() => format!("&({})", s),
+                Some((AccessConvention::Mutate, _)) => format!("&mut ({})", s),
+                _ => s,
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 fn emit_str(cx: &Cx, parts: &[StrPart], env: &HashMap<String, Slot>) -> String {
     if parts.len() == 1 {
         if let StrPart::Lit(s) = &parts[0] {
@@ -541,27 +1400,6 @@ fn emit_call(cx: &Cx, call: &crate::ast::Call, env: &HashMap<String, Slot>) -> S
         return format!("println!(\"{{}}\", ({}).lex_show())", arg);
     }
     let sig = cx.sigs.get(&call.name);
-    let args = call
-        .args
-        .iter()
-        .enumerate()
-        .map(|(i, a)| {
-            let mut s = emit_expr(cx, &a.expr, env);
-            if a.flags.implicit_clone {
-                s = format!("({}).clone()", s);
-            } else if a.flags.shared_auto_clone {
-                s = format!("std::sync::Arc::clone(&{})", s);
-            }
-            let conv = sig
-                .and_then(|ps| ps.get(i))
-                .map(|(c, t)| (*c, t.clone()));
-            match conv {
-                Some((AccessConvention::Read, t)) if !t.is_scalar() => format!("&({})", s),
-                Some((AccessConvention::Mutate, _)) => format!("&mut ({})", s),
-                _ => s,
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(", ");
+    let args = emit_call_args(cx, sig.map(|s| s.as_slice()), &call.args, env);
     format!("{}({})", mangle(&call.name), args)
 }

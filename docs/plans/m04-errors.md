@@ -31,8 +31,8 @@ fn main() {
     val a = parse_age("42") or 0;            // fallback value
     val b = parse_age(raw_text) or return;   // bail out of main
     switch parse_age("x") {                  // full handling
-        it is ok(n) -> { print("age {n}"); };
-        it is err(e) -> { print("bad input: {e}"); };
+        it == ok(n) -> { print("age {n}"); };
+        it == err(e) -> { print("bad input: {e}"); };
     }
 }
 
@@ -44,8 +44,8 @@ fn load() -> Int or ParseError {
 
 - **`T or E`** is the result type (S34): `E` is any enum, struct, or
   `String`. There is no user-visible `Result` name.
-- **`ok(v)` / `err(e)`** construct the two cases; **`is ok(v)` /
-  `is err(e)`** destructure them (same machinery as M3 `is`).
+- **`ok(v)` / `err(e)`** construct the two cases; **`== ok(v)` /
+  `== err(e)`** destructure them (same machinery as M3 `==` patterns).
 - **`?`** (S7) propagates: unwraps `ok`, early-returns `err` — only
   inside a function whose return type carries a compatible error.
 - **`or <expr>`** (S35) is the fallback operator on a result/Option
@@ -83,17 +83,17 @@ Precedence: `e or f` binds looser than `&&`/`||` so `a? or b` and
 2. `?` requires the enclosing function to return `U or E2` where the
    propagated error type `E` equals `E2` (no conversions in v1 — E0403
    names both error types; fix: handle here with `is`, or make the
-   types match). `?` on `T?` propagates `none` iff the function returns
+   types match). `?` on `T?` propagates `null` iff the function returns
    an Option (same rule, same code).
 3. `ok`/`err` only typecheck where a result type is expected (E0404,
-   mirror of M3's E0308 for `none`); `err(e)` requires `e`'s type to be
+   mirror of M3's E0308 for `null`); `err(e)` requires `e`'s type to be
    the declared error type.
 4. `or` fallback: payload type and fallback expression type must match
    (E0405). `or return` requires the function's return type to permit a
    bare return; `or return expr` typechecks `expr` against it.
 5. `main` may not declare an error return in v1 (keeps E0122's story);
    errors reaching `main` are handled explicitly. (Revisit post-v1.)
-6. The `it` subject name in `switch <fallible-expr> { it is ok(n) … }`
+6. The `it` subject name in `switch <fallible-expr> { it == ok(n) … }`
    is bound only when the subject is not already a name; shadowing rules
    E0118 apply.
 7. Exhaustiveness: a pattern-switch over a result must cover `ok` and
@@ -131,7 +131,7 @@ E0401 fallible value used unchecked · E0402 fallible result ignored ·
 E0403 `?` error type doesn't match the function's · E0404 `ok`/`err`
 need a result context · E0405 `or` fallback type mismatch.
 Teaching: E0023 `throw`/`raise` → return `err(…)` · E0024 `catch`/
-`except` → `or` / `is err` · E0025 `unwrap`/`expect` → `or panic(…)`.
+`except` → `or` / `== err` · E0025 `unwrap`/`expect` → `or panic(…)`.
 E0014 (`try` → `?`) already exists; update its message to point at the
 now-real feature.
 
